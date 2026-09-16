@@ -8,9 +8,19 @@ const DEFAULT_SETTINGS = {
   defaultMode: "smart", // 'smart' | 'manual'
   preferredFormat: "auto", // 'auto' | 'image/webp' | 'image/jpeg' | 'image/png'
   rememberQuality: true,
-  lastQuality: 82,
+  lastQuality: 75,
+  lastTargetSize: 512,
+  lastPreset: "balanced",
   uploadOptimizerEnabled: true
 };
+
+const ALLOWED_MESSAGES = new Set([
+  "OPEN_OPTIMIZER",
+  "CAPTURE_VISIBLE_TAB",
+  "TRIGGER_AREA_SNIP",
+  "ENSURE_PDF_LIB",
+  "START_AREA_SCREENSHOT"
+]);
 
 chrome.runtime.onInstalled.addListener(async () => {
   try {
@@ -22,13 +32,46 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
 });
 
+chrome.windows.onRemoved.addListener(async (windowId) => {
+  try {
+    const stored = await chrome.storage.session.get("preflight:workspaceWindowId");
+    if (stored && stored["preflight:workspaceWindowId"] === windowId) {
+      await chrome.storage.session.remove("preflight:workspaceWindowId");
+    }
+  } catch (_) {}
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (!message || !message.type) return false;
+  if (!message || !message.type || !ALLOWED_MESSAGES.has(message.type)) return false;
 
   if (message.type === "OPEN_OPTIMIZER") {
-    chrome.tabs.create({ url: chrome.runtime.getURL("optimizer/optimizer.html") });
-    sendResponse({ ok: true });
-    return false;
+    (async () => {
+      try {
+        const stored = await chrome.storage.session.get("preflight:workspaceWindowId");
+        const existingId = stored ? stored["preflight:workspaceWindowId"] : null;
+        if (existingId) {
+          try {
+            await chrome.windows.get(existingId);
+            await chrome.windows.update(existingId, { focused: true });
+            sendResponse({ ok: true, reused: true });
+            return;
+          } catch (_) {
+            // window is closed/gone — fall through to create
+          }
+        }
+        const win = await chrome.windows.create({
+          type: "popup",
+          url: chrome.runtime.getURL("optimizer/optimizer.html"),
+          width: 960,
+          height: 680
+        });
+        await chrome.storage.session.set({ "preflight:workspaceWindowId": win.id });
+        sendResponse({ ok: true, windowId: win.id });
+      } catch (err) {
+        sendResponse({ ok: false, error: err && err.message ? err.message : "Could not open workspace window." });
+      }
+    })();
+    return true; // async response
   }
 
   if (message.type === "CAPTURE_VISIBLE_TAB") {
@@ -76,50 +119,5 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === "START_DESKTOP_CAPTURE") {
-    (async () => {
-      try {
-        let [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!activeTab) {
-          const allTabs = await chrome.tabs.query({ active: true });
-          activeTab = allTabs && allTabs[0];
-        }
-        await ensureOffscreenDocument();
-        chrome.desktopCapture.chooseDesktopMedia(
-          ["screen", "window", "tab"],
-          activeTab,
-          (streamId) => {
-            if (!streamId) {
-              sendResponse({ ok: false, canceled: true, error: "Capture canceled by user." });
-              return;
-            }
-            chrome.runtime.sendMessage({ type: "CAPTURE_STREAM", streamId }, (resp) => {
-              if (resp && resp.ok && resp.dataUrl) {
-                sendResponse({ ok: true, dataUrl: resp.dataUrl });
-              } else {
-                sendResponse({ ok: false, error: (resp && resp.error) || "Stream capture failed." });
-              }
-            });
-          }
-        );
-      } catch (err) {
-        sendResponse({ ok: false, error: err && err.message ? err.message : "Failed to initiate screen capture." });
-      }
-    })();
-    return true; // async response
-  }
-
   return false;
 });
-
-async function ensureOffscreenDocument() {
-  if (typeof chrome.offscreen === "undefined") return;
-  const hasDoc = await chrome.offscreen.hasDocument();
-  if (hasDoc) return;
-  await chrome.offscreen.createDocument({
-    url: "offscreen/offscreen.html",
-    reasons: ["USER_MEDIA", "DISPLAY_MEDIA"],
-    justification: "Capturing a single frame screenshot of the selected screen or window."
-  });
-}
-

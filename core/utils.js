@@ -64,7 +64,7 @@
         .replace(/\s+/g, " ")
         .trim()
         .replace(/-+$/, "")
-        .slice(0, 100) || "image"
+        .slice(0, 100) || "file"
     );
   }
 
@@ -88,6 +88,10 @@
       case "application/json":
       case "json":
         return "json";
+      case "application/javascript":
+      case "text/javascript":
+      case "js":
+        return "js";
       case "text/plain":
       case "txt":
         return "txt";
@@ -144,6 +148,8 @@
     const base = rawBase.replace(/-optimized$/i, "") || "image";
     return `${base}-optimized.${ext}`;
   }
+
+  // sanitizeFilename is defined earlier in this file (line 60)
 
   function stripExtension(name) {
     const idx = name.lastIndexOf(".");

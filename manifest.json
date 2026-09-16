@@ -29,9 +29,7 @@
     "storage",
     "clipboardWrite",
     "scripting",
-    "desktopCapture",
-    "offscreen",
-    "tabs"
+    "windows"
   ],
   "host_permissions": [
     "<all_urls>"

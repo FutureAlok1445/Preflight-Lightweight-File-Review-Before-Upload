@@ -260,30 +260,51 @@
           crop
         });
 
-        if (response && response.ok && response.dataUrl) {
-          const img = new Image();
-          img.src = response.dataUrl;
-          await new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
-          });
-
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.max(1, rect.w);
-          canvas.height = Math.max(1, rect.h);
-          const ctx = canvas.getContext("2d");
-          ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, 0, 0, rect.w, rect.h);
-
-          const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-          const filename = `snip-${timestampForFilename()}.png`;
-
-          await Preflight.storageBridge.savePending(blob, filename, "image/png", "capture");
-          chrome.runtime.sendMessage({ type: "OPEN_OPTIMIZER" });
+        if (!response || !response.ok || !response.dataUrl) {
+          host.style.display = "";
+          const errMsg = document.createElement("div");
+          errMsg.className = "pf-instruction";
+          errMsg.style.background = "#991b1b";
+          errMsg.style.color = "#ffffff";
+          errMsg.textContent = "Capture failed: " + ((response && response.error) || "Unknown error. Try again.");
+          shadow.appendChild(errMsg);
+          setTimeout(() => errMsg.remove(), 4000);
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = "\u2713 Prepare in PREflight";
+          return;
         }
+
+        const img = new Image();
+        img.src = response.dataUrl;
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+        });
+
+        const imgNatW = img.naturalWidth || img.width;
+        const imgNatH = img.naturalHeight || img.height;
+        const clampedX = Math.max(0, Math.min(crop.x, imgNatW - 1));
+        const clampedY = Math.max(0, Math.min(crop.y, imgNatH - 1));
+        const clampedW = Math.min(crop.w, imgNatW - clampedX);
+        const clampedH = Math.min(crop.h, imgNatH - clampedY);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, rect.w);
+        canvas.height = Math.max(1, rect.h);
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, clampedX, clampedY, clampedW, clampedH, 0, 0, rect.w, rect.h);
+
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+        const filename = `snip-${timestampForFilename()}.png`;
+
+        await Preflight.storageBridge.savePending(blob, filename, "image/png", "capture");
+        await chrome.runtime.sendMessage({ type: "OPEN_OPTIMIZER" });
+        teardown();
       } catch (err) {
         console.error("Area snip failed:", err);
-      } finally {
-        teardown();
+        host.style.display = "";
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = "\u2713 Prepare in PREflight";
       }
     }
 

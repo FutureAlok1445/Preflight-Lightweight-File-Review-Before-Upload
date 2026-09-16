@@ -23,7 +23,6 @@
   const els = {
     captureAreaBtn: document.getElementById("captureAreaBtn"),
     captureBtn: document.getElementById("captureBtn"),
-    captureScreenBtn: document.getElementById("captureScreenBtn"),
     selectBtn: document.getElementById("selectBtn"),
     pasteBtn: document.getElementById("pasteBtn"),
     fileInput: document.getElementById("fileInput"),
@@ -50,7 +49,6 @@
 
     wireAreaCapture();
     wireCapture();
-    wireScreenCapture();
     wireSelect();
     wirePaste();
     wireDropZone();
@@ -65,60 +63,6 @@
     if (kind) els.status.classList.add(kind === "error" ? "is-error" : "is-success");
   }
 
-  // ---------- Desktop / Screen / Window Capture Engine ----------
-
-  async function triggerDesktopCapture(forAreaSnip = false) {
-    setStatus("Select screen or window to capture…");
-    return new Promise((resolve) => {
-      chrome.runtime.sendMessage({ type: "START_DESKTOP_CAPTURE" }, async (resp) => {
-        if (!resp) {
-          setStatus("Screen capture could not be initiated.", "error");
-          resolve(false);
-          return;
-        }
-        if (resp.canceled) {
-          setStatus("Capture canceled.");
-          resolve(false);
-          return;
-        }
-        if (!resp.ok || !resp.dataUrl) {
-          setStatus(resp.error || "Screen capture failed.", "error");
-          resolve(false);
-          return;
-        }
-        try {
-          const res = await fetch(resp.dataUrl);
-          const blob = await res.blob();
-          const name = `capture-${timestampForFilename()}.png`;
-          await window.Preflight.storageBridge.savePending(
-            blob,
-            name,
-            "image/png",
-            forAreaSnip ? "crop" : "capture"
-          );
-          await openOptimizerTab();
-          window.close();
-          resolve(true);
-        } catch (e) {
-          setStatus("Failed to process captured image.", "error");
-          resolve(false);
-        }
-      });
-    });
-  }
-
-  function wireScreenCapture() {
-    if (!els.captureScreenBtn) return;
-    els.captureScreenBtn.addEventListener("click", async () => {
-      els.captureScreenBtn.disabled = true;
-      try {
-        await triggerDesktopCapture(false);
-      } finally {
-        els.captureScreenBtn.disabled = false;
-      }
-    });
-  }
-
   // ---------- Area Snipper (Custom Size Screenshot) ----------
 
   function wireAreaCapture() {
@@ -128,35 +72,27 @@
       setStatus("Select an area on the page…");
       try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab || !tab.id) {
-          await triggerDesktopCapture(true);
-          return;
-        }
+        if (!tab || !tab.id) throw new Error("No active tab found.");
         if (isRestrictedUrl(tab.url)) {
-          // Internal Chrome page or system tab — use universal window capture with workspace crop!
-          setStatus("Select window to snip…");
-          await triggerDesktopCapture(true);
-          return;
+          throw new Error("Cannot take screenshots on internal Chrome pages.");
         }
 
-        chrome.tabs.sendMessage(tab.id, { type: "START_AREA_SCREENSHOT" }, async (resp) => {
+        chrome.tabs.sendMessage(tab.id, { type: "START_AREA_SCREENSHOT" }, (resp) => {
           if (chrome.runtime.lastError) {
-            // Content script could not receive message — seamlessly fallback to desktop capture with crop!
-            await triggerDesktopCapture(true);
+            setStatus("Please reload this page once to enable area screenshots.", "error");
+            els.captureAreaBtn.disabled = false;
           } else {
             window.close();
           }
         });
       } catch (err) {
-        // Any failure falls back to universal capture rather than blocking the user
-        await triggerDesktopCapture(true);
-      } finally {
+        setStatus(err && err.message ? err.message : "Could not start area screenshot.", "error");
         els.captureAreaBtn.disabled = false;
       }
     });
   }
 
-  // ---------- Capture Visible Tab Screenshot ----------
+  // ---------- Capture Screenshot ----------
 
   function wireCapture() {
     els.captureBtn.addEventListener("click", async () => {
@@ -164,31 +100,21 @@
       setStatus("Capturing…");
       try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab || !tab.id) {
-          await triggerDesktopCapture(false);
-          return;
-        }
+        if (!tab || !tab.id) throw new Error("No active tab found.");
         if (isRestrictedUrl(tab.url)) {
-          // Internal browser page — seamlessly fallback to desktop/window capture!
-          await triggerDesktopCapture(false);
-          return;
+          throw new Error("Chrome does not allow screenshots on this page.");
         }
 
-        try {
-          const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
-          const name = `screenshot-${timestampForFilename()}.png`;
-          const res = await fetch(dataUrl);
-          const blob = await res.blob();
+        const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+        const name = `screenshot-${timestampForFilename()}.png`;
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
 
-          await window.Preflight.storageBridge.savePending(blob, name, "image/png", "capture");
-          await openOptimizerTab();
-          window.close();
-        } catch (captureErr) {
-          // If captureVisibleTab fails for any permission/security reason, seamlessly capture screen/window!
-          await triggerDesktopCapture(false);
-        }
+        await window.Preflight.storageBridge.savePending(blob, name, "image/png", "capture");
+        await openWorkspaceWindow();
+        window.close();
       } catch (err) {
-        await triggerDesktopCapture(false);
+        setStatus(err && err.message ? err.message : "Could not capture this page.", "error");
       } finally {
         els.captureBtn.disabled = false;
       }
@@ -267,15 +193,26 @@
     setStatus("Opening PREflight workspace…");
     try {
       await window.Preflight.storageBridge.savePending(file, file.name, file.type, "import");
-      await openOptimizerTab();
+      await openWorkspaceWindow();
       window.close();
     } catch (err) {
       setStatus("Could not load file.", "error");
     }
   }
 
-  async function openOptimizerTab() {
-    await chrome.tabs.create({ url: chrome.runtime.getURL("optimizer/optimizer.html") });
+  async function openWorkspaceWindow() {
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: "OPEN_OPTIMIZER" });
+      if (!resp || !resp.ok) {
+        setStatus("PREflight workspace could not open in a separate window. The current tab will be used instead.", "error");
+        setTimeout(() => {
+          chrome.tabs.create({ url: chrome.runtime.getURL("optimizer/optimizer.html") });
+        }, 100);
+        setTimeout(() => setStatus(""), 5000);
+      }
+    } catch (err) {
+      setStatus("Could not open workspace.", "error");
+    }
   }
 
   function timestampForFilename() {

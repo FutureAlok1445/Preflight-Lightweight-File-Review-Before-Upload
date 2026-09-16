@@ -1,150 +1,164 @@
-# PREflight
+# PREflight ✈️
 
-**File preparation and optimization before upload.**
-
-PREflight is a lightweight, local-first Chrome extension (Manifest V3) that sits between **"Choose File"** and **"Upload"**. It intercepts file uploads on any website, allows interactive custom-size area screenshots, and provides a local workspace to review, compress, convert, merge, or clean files before they leave your browser.
-
-Everything runs 100% locally in-memory on your machine. There is zero network transmission, zero telemetry, no backend, and no external compression services.
+> **Optimize before you upload.**  
+> A private, zero-network, local-first browser extension for Chromium browsers (Chrome, Edge, Brave, Opera GX, Vivaldi, Arc). Review, compress, edit, snip, and prepare images, PDFs, and text documents locally in your browser before uploading them anywhere.
 
 ---
 
-## 1. Core Product Principles
-
-- **Zero Automatic Upload**: PREflight never continues or uploads modified files without your explicit confirmation.
-- **Zero Automatic Navigation**: PREflight never redirects you or triggers unexpected page changes.
-- **Original File Safe**: The original file is never overwritten, destroyed, or modified in-place.
-- **Local-First & Private**: All image processing, PDF manipulation, and text parsing executes strictly in browser memory.
-- **Times New Roman & Crisp Editorial Aesthetic**: Clean, professional layout, high-contrast monochrome palette, subtle borders, zero AI gradients.
+## 🔒 100% Private & Local
+- **Zero Server Uploads**: No backend, no APIs, no analytics, no external servers.
+- **In-Memory Only**: All image compression, PDF operations, and text parsing happen directly on your machine inside browser memory.
+- **Never Overwrites**: Your original files on disk remain untouched.
+- **Explicit Confirmation**: Files are never uploaded without your explicit approval.
 
 ---
 
-## 2. Features
+## ✨ Features
 
-### A. Custom-Size Area Screenshot (Lightshot / Snipping Tool Style)
-- **Select Area to Snip**: Click the extension icon and select "Select Area to Snip" to dim the screen and draw a rubber-band box over any section of the active webpage.
-- **Live Dimensions Badge**: Displays exact pixel width and height (e.g., `640 × 480 px`) while dragging or adjusting corner handles.
-- **High-DPI Retina Support**: Automatically scales with `window.devicePixelRatio` for razor-sharp crops.
-- **Direct Workspace Handoff**: Hands off cropped screenshots directly into the local optimizer for instant compression, clipboard copy, or download.
-- **Capture Tab**: Also supports instant full active-tab capture.
+### 📸 1. Custom Area Screenshot (Lightshot / Snipping Tool Style)
+- Click **"Select Area to Snip"** to dim any web page and draw a custom crop box.
+- Live pixel dimension indicators (`W × H`) with corner/edge resize handles.
+- High-DPI Retina resolution support (`window.devicePixelRatio`).
+- Directly opens into the PREflight workspace to compress, download, or copy to clipboard.
+- Also supports instant **Full Tab Capture**.
 
-### B. 2-Step On-Page Upload Review (Any Website)
-When selecting a file on any standard upload input on any website:
-1. **Step 1 — Decision Card**:
-   - Displays file name, detected format label, and exact size.
-   - Highlights detected website upload limits (e.g. `Site limit detected: 5 MB`).
-   - Gives explicit choices:
-     - `[ Compress / Optimize ]` (or `[ Compress PDF ]` / `[ Clean Text ]`)
-     - `[ Continue with Original ]`
-     - `[ Cancel ]`
-     - `Open in Full Workspace...`
-2. **Step 2 — Confirmation Card**:
-   - Displays a 3-column stats comparison: `Original Size`, `Optimized Size`, and `Saved %`.
-   - Explains the result (or notes if the file was already optimal).
-   - Gives explicit next actions:
-     - `[ Continue Upload ]` (replaces input files via W3C DataTransfer and continues)
-     - `[ Download ]` (saves processed file)
-     - `[ Copy ]` (copies image to clipboard)
-     - `← Back` (returns to decision card)
+### ⚡ 2. Smart 2-Step On-Page Upload Review
+When you click **"Choose File"** on any website:
+1. **Step 1 — Decision Card**: Detects the file, checks website size limits (e.g., `Site limit detected: 5 MB`), and gives options:
+   - `[ Compress / Optimize ]` (or `[ Compress PDF ]` / `[ Clean Text ]`)
+   - `[ Continue with Original ]`
+   - `[ Cancel ]`
+   - `Open in Full Workspace...`
+2. **Step 2 — Confirmation Card**: Shows comparison (`Original` vs `Optimized` vs `% Saved`), with immediate actions:
+   - `[ Continue Upload ]` (automatically supplies the optimized file to the form input)
+   - `[ Download ]`
+   - `[ Copy ]`
 
-### C. Local PDF Tools (`pdf-lib`)
-- **PDF Compress**: Locally optimizes cross-reference object streams, strips non-essential metadata, and removes unreferenced dictionary items while keeping all text, vectors, and pages intact.
-- **PDF Split / Extract**: Specify page numbers or ranges (e.g. `1-3, 5, 8`) to extract pages into a new standalone PDF.
-- **PDF Merge**: Multi-file queue with reordering controls (Move Up, Move Down, Remove) to combine multiple PDFs into one.
-- **Text to PDF**: Paginated Helvetica generator with automated word wrapping.
+### 📄 3. Local PDF Tools (Powered by `pdf-lib`)
+- **PDF Compression**: Strips metadata, unreferenced objects, and re-encodes streams without touching text/vector quality.
+- **PDF Split / Range Extract**: Extract pages or custom page ranges (e.g. `1-3, 5, 8`) into a new PDF.
+- **PDF Merge**: Combine multiple PDF files into one with reorder (Up/Down) controls.
+- **Text to PDF**: Generate clean paginated PDF documents from raw text with automatic wrapping.
 
-### D. Text & CSV Intelligence
-- **Structure Analysis**: Displays line count, word count, character count, and detects CSV delimiters (`,`, `;`, `\t`).
-- **Clean Whitespace**: Removes excess trailing whitespace and empty lines without changing data.
-- **CSV to JSON Export**: Converts tabular CSV data into structured JSON arrays locally.
+### 🖼️ 4. Image Optimizer
+- **Formats**: Auto (Smart Match), WebP, JPEG, PNG.
+- **Compression**: Bounded quality slider (35% to 95%).
+- **Resizing**: Max dimension constraints (Original, 2400px, 1920px Full HD, 1280px 720p).
+- **Inspection**: Split Before / After tabs to verify visual fidelity.
+- **One-Click Clipboard**: Copy optimized image directly to clipboard.
 
-### E. Universal Image Optimizer
-- **Formats**: Auto, WebP, JPEG, PNG.
-- **Quality Control**: Bounded compression slider (35% to 95%).
-- **Dimension Constraints**: Original, 2400px, 1920px (1080p), 1280px (720p).
-- **Visual Inspection**: Split Before (Original) vs. After (Optimized) preview tabs.
-- **Clipboard Support**: One-click copy of optimized images to the system clipboard.
-
-### F. Document Archive Inspection
-- Transparently inspects package archives (e.g. DOCX, ODT) and preserves them intact without fake compression.
+### 📝 5. Text & CSV Cleaner
+- **Structure Analysis**: Word count, line count, character count, delimiter detection (`,`, `;`, `\t`).
+- **Whitespace Cleaner**: Removes empty lines and trailing whitespace without touching your data.
+- **CSV to JSON**: Instant local conversion of tabular CSV files into formatted JSON.
 
 ---
 
-## 3. Project Architecture
+## 🌐 Browser Compatibility
+
+PREflight is built for **all Chromium-based desktop browsers**:
+
+| Browser | Supported | Installation URL |
+| :--- | :---: | :--- |
+| **Google Chrome** | ✅ Yes | `chrome://extensions` |
+| **Microsoft Edge** | ✅ Yes | `edge://extensions` |
+| **Brave Browser** | ✅ Yes | `brave://extensions` |
+| **Opera / Opera GX** | ✅ Yes | `opera://extensions` |
+| **Vivaldi** | ✅ Yes | `vivaldi://extensions` |
+| **Arc Browser** | ✅ Yes | `arc://extensions` |
+
+*(Note: Apple Safari requires native macOS wrappers and is not supported. Mozilla Firefox uses different background script packaging; Chromium is the recommended engine).*
+
+---
+
+## 🚀 Quick Start / Installation Guide
+
+Anyone with this GitHub link can install and use PREflight in less than 60 seconds:
+
+### Step 1: Download the Project
+- Click the green **Code** button at the top of this GitHub repository and select **Download ZIP**.
+- Extract the ZIP file onto your computer (e.g., Desktop or Documents).  
+  *(Or run `git clone https://github.com/YourUsername/preflight.git` in your terminal).*
+
+### Step 2: Open Extensions in Your Browser
+Open your Chromium browser and visit the extensions settings page:
+- **Chrome**: `chrome://extensions`
+- **Edge**: `edge://extensions`
+- **Brave**: `brave://extensions`
+- **Opera**: `opera://extensions`
+
+### Step 3: Enable Developer Mode
+Turn on the **"Developer mode"** toggle switch (usually found in the top-right or left sidebar).
+
+### Step 4: Load the Extension
+1. Click the **"Load unpacked"** button.
+2. Select the extracted `preflight` folder (the folder containing `manifest.json`).
+3. **Done!** PREflight is now active in your browser. Pin it to your toolbar for instant access!
+
+---
+
+## 📂 Project Structure
 
 ```
 preflight/
 ├── manifest.json              # Chrome Manifest V3 configuration
-├── background.js              # Service worker (tab capture, area snip trigger, lazy injection)
+├── background.js              # Service worker (tab capture, area snipper, message routing)
 │
-├── core/
-│   ├── utils.js               # Formatting, MIME classification, filename helpers, storage bridge
-│   ├── file-analyzer.js       # Universal file metadata extraction & supported action resolution
-│   ├── image-optimizer.js     # HTML5 Canvas / OffscreenCanvas image encoding & resize math
-│   ├── smart-profile.js       # Deterministic heuristics for image quality & format selection
+├── core/                      # Shared zero-dependency local engines
+│   ├── utils.js               # Unit formatting, MIME detection, filename safety, storage bridge
+│   ├── file-analyzer.js       # File metadata extraction & supported action resolution
+│   ├── image-optimizer.js     # OffscreenCanvas / HTML5 canvas compression & resizing
+│   ├── smart-profile.js       # Smart heuristics for optimal compression presets
 │   ├── pdf-processor.js       # Local PDF engine (compress, split, merge, text-to-pdf)
-│   ├── text-processor.js      # Text analysis, whitespace cleaner, and CSV to JSON parser
-│   ├── clipboard.js           # Async Clipboard API integration
-│   └── downloader.js          # In-memory blob download triggers
+│   ├── text-processor.js      # Text analysis, whitespace cleaner, and CSV to JSON converter
+│   ├── clipboard.js           # Async Clipboard API wrapper
+│   ├── downloader.js          # In-memory blob download triggers
+│   ├── result-model.js        # Standardized optimization result object model
+│   ├── batch-processor.js     # Queue processor for multi-file batches
+│   └── recent-history.js      # Session-based recent history tracker
 │
-├── upload/
-│   ├── upload-detector.js     # Content script intercepting <input type="file"> on websites
-│   ├── upload-ui.js           # Isolated Shadow DOM 2-step decision & confirmation card
-│   └── area-snipper.js        # Interactive custom-size screenshot rubber-band overlay
+├── upload/                    # In-page website interception
+│   ├── upload-detector.js     # Content script intercepting file inputs on websites
+│   ├── upload-ui.js           # Isolated Shadow DOM review card
+│   └── area-snipper.js        # Interactive screenshot snipping overlay
 │
-├── popup/
-│   ├── popup.html             # Toolbar launcher interface
-│   ├── popup.css              # Times New Roman editorial styling
-│   └── popup.js               # Area snip trigger, full tab capture, file drop & options
+├── popup/                     # Toolbar popup UI
+│   ├── popup.html             # Popup interface
+│   ├── popup.css              # Editorial clean monochrome styling
+│   └── popup.js               # Screenshot triggers, dropzone, and settings
 │
-├── optimizer/
-│   ├── optimizer.html         # Multi-tool workspace (Images, PDFs, Text/CSV, Docs)
-│   ├── optimizer.css          # Clean monochrome workspace layout
-│   └── optimizer.js           # Workspace controller wiring all local engines
+├── optimizer/                 # Full standalone workspace
+│   ├── optimizer.html         # Multi-tool workspace (Images, PDFs, Text, Archive)
+│   ├── optimizer.css          # Workspace styles
+│   ├── optimizer.js           # Controller wiring all local engines
+│   └── comparison-slider.js   # Interactive before/after preview controller
 │
 ├── lib/
-│   └── pdf-lib.min.js         # Bundled standalone UMD PDF library (zero network requests)
+│   └── pdf-lib.min.js         # Bundled standalone UMD PDF library (zero network calls)
 │
-└── icons/
-    ├── icon16.png
-    ├── icon32.png
-    ├── icon48.png
-    └── icon128.png
+├── icons/                     # Application icons (16px, 32px, 48px, 128px)
+│
+└── tests/                     # Vitest + fast-check test suites (36 passing tests)
 ```
 
 ---
 
-## 4. Performance & Security
+## 🧪 Development & Testing
 
-- **Zero Remote Dependencies**: Works completely offline. No external CDN scripts, no tracking, and no external compression APIs.
-- **Lazy Loading**: Initial content script injection is only ~45 KB. Heavy engines (like `pdf-lib`) are lazy-loaded on-demand via `chrome.scripting.executeScript` only when the user uploads a PDF and requests compression.
-- **Memory Hygiene**: Automatically revokes Object URLs (`URL.revokeObjectURL`) on navigation and reset to prevent memory leaks.
-- **No Dynamic Code Execution**: Compliant with strict Manifest V3 Content Security Policy (no `eval` or remote scripts).
+PREflight includes a comprehensive test suite covering core utilities, property-based tests, and integration flows:
 
----
+```bash
+# Install test dependencies (Vitest & fast-check)
+npm install
 
-## 5. Installation Instructions
+# Run all tests
+npm test
+```
 
-1. Clone or download this repository.
-2. Open Google Chrome and navigate to `chrome://extensions/`.
-3. Enable **Developer mode** using the toggle switch in the upper-right corner.
-4. Click **Load unpacked** in the top-left menu.
-5. Select the `preflight` folder.
-6. PREflight is now installed and active.
+**Test Status:** 10 / 10 test suites passed (36/36 tests passing).
 
 ---
 
-## 6. Testing Workflows
+## 📜 License
 
-1. **On-Page Upload Review**:
-   - Go to any website with a file upload (e.g. a portal or test form).
-   - Select an image or PDF.
-   - PREflight's review card appears in the lower-right corner.
-   - Choose to compress, inspect the reduction stats, and explicitly confirm upload.
-2. **Custom Area Snip**:
-   - Click the PREflight extension icon in your Chrome toolbar.
-   - Click **[ Select Area to Snip ]**.
-   - Drag a box over any region on your active webpage and click **[ Snip & Optimize ]**.
-   - The snip opens in the PREflight workspace for optimization, copying, or downloading.
-3. **PDF Merge & Split**:
-   - Open the PREflight popup and click **[ Add File ]**.
-   - Load multiple PDFs to arrange order and merge them into a single PDF, or extract specific page ranges (e.g., `1-3`).
+MIT License. Free and open source for personal and commercial use.

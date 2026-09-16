@@ -438,59 +438,6 @@ kbd {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-.preview-header-left {
-  display: flex;
-  align-items: center;
-}
-
-.crop-workspace {
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-}
-
-.crop-canvas-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #1e1e1e;
-  padding: 16px;
-  overflow: auto;
-  min-height: 280px;
-  max-height: 520px;
-}
-
-#cropCanvas {
-  cursor: crosshair;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
-  max-width: 100%;
-  height: auto;
-  display: block;
-}
-
-.crop-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  background: var(--bg);
-  border-top: 1px solid var(--border);
-}
-
-.crop-dim-badge {
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
-}
-
-.crop-toolbar-btns {
-  display: flex;
-  gap: 8px;
-}
-
 /* ---------- Controls Panel ---------- */
 
 .controls-panel {
@@ -839,4 +786,387 @@ select:focus {
   font-variant-numeric: tabular-nums;
   color: var(--text);
 }
+
+/* ========================================================
+   SPAv2 Navigation, Presets, Slider & Batch Styles
+   ======================================================== */
+
+.main-nav {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0 16px;
+  overflow-x: auto;
+}
+
+.nav-btn {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  white-space: nowrap;
+  transition: color 100ms ease, border-color 100ms ease;
+}
+
+.nav-btn:hover {
+  color: var(--text);
+}
+
+.nav-btn.is-active {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+
+.nav-btn:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+
+/* ---------- Preset Bar ---------- */
+
+.preset-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 16px;
+  flex-wrap: wrap;
+}
+
+.preset-btn {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+.preset-btn:hover {
+  background: var(--surface-alt);
+}
+
+.preset-btn.is-active {
+  background: #111111;
+  color: #ffffff;
+  border-color: #111111;
+}
+
+.preset-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin-left: 6px;
+}
+
+.inline-error {
+  color: var(--danger);
+  font-size: 12px;
+  display: block;
+  margin-top: 4px;
+}
+
+.exif-description {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.35;
+  font-style: italic;
+}
+
+/* ---------- Comparison Slider ---------- */
+
+.cs-wrapper {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  width: 100%;
+  min-height: 240px;
+  max-height: 460px;
+  background: #f4f4f4;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 12px 0;
+  line-height: 0;
+}
+
+.cs-before, .cs-after {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+
+.cs-before {
+  z-index: 1;
+}
+
+.cs-after {
+  z-index: 2;
+}
+
+.cs-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #ffffff;
+  border: 1px solid #111111;
+  cursor: ew-resize;
+  z-index: 3;
+  transform: translateX(-50%);
+  box-shadow: 0 0 6px rgba(0,0,0,0.3);
+}
+
+.cs-handle:focus-visible {
+  outline: 2px solid #111111;
+}
+
+.cs-label {
+  position: absolute;
+  top: 8px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #ffffff;
+  font-size: 11px;
+  padding: 3px 7px;
+  border-radius: 2px;
+  z-index: 4;
+  pointer-events: none;
+  font-family: inherit;
+}
+
+.cs-label-before {
+  left: 8px;
+}
+
+.cs-label-after {
+  right: 8px;
+}
+
+/* ---------- Batch Processing Mode ---------- */
+
+.batch-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.batch-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  background: var(--surface);
+}
+
+.batch-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12.5px;
+}
+
+.batch-name {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-size {
+  color: var(--text-secondary);
+}
+
+.batch-status {
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.batch-status-queued {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.batch-status-processing {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.batch-status-done {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.batch-status-failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.batch-saved {
+  color: var(--accent-green);
+  font-weight: 700;
+}
+
+.batch-error {
+  color: var(--danger);
+  font-style: italic;
+  font-size: 11px;
+}
+
+.batch-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ---------- History Panel ---------- */
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.history-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  gap: 12px;
+}
+
+.history-name {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.history-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.history-badge {
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.history-badge-success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.history-badge-failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* ---------- Home Quick Action Cards ---------- */
+
+.home-tagline {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: var(--text);
+  text-align: center;
+}
+
+.quick-action-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.qa-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color 100ms ease, border-color 100ms ease, transform 60ms ease;
+  min-height: 72px;
+}
+
+.qa-card:hover {
+  background: var(--surface-alt);
+  border-color: var(--border-strong);
+}
+
+.qa-card:active {
+  transform: translateY(1px);
+}
+
+/* ---------- Global Accessibility & Focus ---------- */
+
+*:focus-visible {
+  outline: 2px solid #111111;
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition: none !important;
+    animation-duration: 0.001ms !important;
+  }
+  .pf-spinner {
+    animation-duration: 600ms !important;
+  }
+}
+
 

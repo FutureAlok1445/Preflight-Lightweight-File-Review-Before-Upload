@@ -34,22 +34,25 @@
     if (!isClipboardImageSupported()) {
       return {
         ok: false,
-        message: "Clipboard image copy is not supported in this context."
+        message: "Clipboard write not supported in this context. Use Download instead.",
+        fallbackToDownload: true
       };
     }
 
     try {
+      // Re-encoding creates an independent PNG blob — the original blob is never mutated
       const pngBlob = CLIPBOARD_SAFE_TYPES.includes(blob.type)
         ? blob
         : await toPng(blob);
 
       const item = new ClipboardItem({ [pngBlob.type]: pngBlob });
       await navigator.clipboard.write([item]);
-      return { ok: true, message: "Copied optimized image." };
+      return { ok: true, message: "Copied optimized image to clipboard." };
     } catch (err) {
       return {
         ok: false,
-        message: "Could not copy the image. Try Download instead."
+        message: "Clipboard write failed. Use Download instead.",
+        fallbackToDownload: true
       };
     }
   }

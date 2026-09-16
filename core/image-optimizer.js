@@ -12,7 +12,7 @@
 
   const Preflight = global.Preflight || (global.Preflight = {});
   const { isSupportedImageFile, buildOutputFilename } = Preflight.utils;
-  const { MAX_DIMENSION } = Preflight.constants;
+  const { MAX_DIMENSION, MAX_SAFE_BYTES } = Preflight.constants;
   const { isMeaningfulReduction } = Preflight.smartProfile;
 
   const MAX_ENCODE_ATTEMPTS = 12; // hard bound for the target-size search
@@ -143,6 +143,12 @@
    *  }
    */
   async function optimizeImage(file, options) {
+    if (!file || typeof file.size !== "number") {
+      throw new OptimizationError("Invalid file provided for optimization.");
+    }
+    if (file.size > MAX_SAFE_BYTES) {
+      throw new OptimizationError("Image exceeds the 45 MB size limit for optimization.");
+    }
     if (!isSupportedImageFile(file)) {
       throw new OptimizationError("Unsupported image format.");
     }
@@ -163,20 +169,26 @@
       const hasAlpha = format === "image/jpeg" ? await detectAlpha(bitmap) : false;
       const { width, height } = computeTargetDimensions(bitmap.width, bitmap.height, maxDimension);
 
-      let blob, quality, attempts, metTarget;
+      let blob, quality, attempts, metTarget, timedOut;
       if (targetBytes) {
-        ({ blob, quality, attempts, metTarget } = await targetSizeSearch(bitmap, {
+        const searchRes = await targetSizeSearch(bitmap, {
           width,
           height,
           format,
           hasAlpha,
           targetBytes
-        }));
+        });
+        blob = searchRes.blob;
+        quality = searchRes.quality;
+        attempts = searchRes.attempts;
+        metTarget = searchRes.metTarget;
+        timedOut = searchRes.timedOut;
       } else {
         blob = await drawBitmapToBlob(bitmap, { width, height, format, quality: requestedQuality, hasAlpha });
         quality = format === "image/png" ? null : requestedQuality;
         attempts = 1;
         metTarget = true;
+        timedOut = false;
       }
 
       const meaningful = isMeaningfulReduction(file.size, blob.size);
@@ -202,6 +214,7 @@
         quality: meaningful ? quality : null,
         alreadyOptimized: !meaningful,
         metTarget,
+        timedOut: !!timedOut,
         attempts
       };
     } finally {
@@ -219,67 +232,79 @@
     let attempts = 0;
     let best = null; // highest-quality result that still fits the target
     let smallest = null; // smallest result seen, as a fallback
+    let timedOut = false;
+    const timeoutId = setTimeout(() => { timedOut = true; }, 30000);
 
     async function tryQuality(w, h, q) {
-      if (attempts >= MAX_ENCODE_ATTEMPTS) return null;
+      if (timedOut || attempts >= MAX_ENCODE_ATTEMPTS) return null;
       attempts += 1;
       return await drawBitmapToBlob(bitmap, { width: w, height: h, format, quality: q, hasAlpha });
     }
 
-    // For lossless PNG, quality parameter is ignored by canvas.
-    // Use a single attempt at full resolution, followed by bounded downscaling if needed.
-    const ladder = format === "image/png" ? [null] : QUALITY_LADDER;
+    try {
+      // For lossless PNG, quality parameter is ignored by canvas.
+      // Use a single attempt at full resolution, followed by bounded downscaling if needed.
+      const ladder = format === "image/png" ? [null] : QUALITY_LADDER;
 
-    for (const q of ladder) {
-      const blob = await tryQuality(width, height, q || 82);
-      if (!blob) break;
-      if (!smallest || blob.size < smallest.blob.size) {
-        smallest = { blob, quality: q, width, height };
-      }
-      if (blob.size <= targetBytes) {
-        best = { blob, quality: q, width, height };
-        break; // ladder is descending quality -> first fit is the best fit
-      }
-    }
-
-    if (!best && attempts < MAX_ENCODE_ATTEMPTS) {
-      // Step-down in resolution (75% and 50% if needed)
-      const scaleSteps = format === "image/png" ? [0.75, 0.5] : [0.75];
-      for (const scale of scaleSteps) {
-        const scaledW = Math.max(1, Math.round(width * scale));
-        const scaledH = Math.max(1, Math.round(height * scale));
-        const subLadder = format === "image/png" ? [null] : [80, 70, 60];
-        for (const q of subLadder) {
-          const blob = await tryQuality(scaledW, scaledH, q || 82);
-          if (!blob) break;
-          if (!smallest || blob.size < smallest.blob.size) {
-            smallest = { blob, quality: q, width: scaledW, height: scaledH };
-          }
-          if (blob.size <= targetBytes) {
-            best = { blob, quality: q, width: scaledW, height: scaledH };
-            break;
-          }
+      for (const q of ladder) {
+        if (timedOut) break;
+        const blob = await tryQuality(width, height, q || 82);
+        if (!blob) break;
+        if (!smallest || blob.size < smallest.blob.size) {
+          smallest = { blob, quality: q, width, height };
         }
-        if (best || attempts >= MAX_ENCODE_ATTEMPTS) break;
+        if (blob.size <= targetBytes) {
+          best = { blob, quality: q, width, height };
+          break; // ladder is descending quality -> first fit is the best fit
+        }
       }
-    }
 
-    const chosen = best || smallest;
-    if (!chosen || !chosen.blob) {
-      throw new OptimizationError("Could not produce a compressed image meeting the requested constraints.");
-    }
+      if (!best && attempts < MAX_ENCODE_ATTEMPTS && !timedOut) {
+        // Step-down in resolution (75% and 50% if needed)
+        const scaleSteps = format === "image/png" ? [0.75, 0.5] : [0.75];
+        for (const scale of scaleSteps) {
+          if (timedOut) break;
+          const scaledW = Math.max(1, Math.round(width * scale));
+          const scaledH = Math.max(1, Math.round(height * scale));
+          const subLadder = format === "image/png" ? [null] : [80, 70, 60];
+          for (const q of subLadder) {
+            if (timedOut) break;
+            const blob = await tryQuality(scaledW, scaledH, q || 82);
+            if (!blob) break;
+            if (!smallest || blob.size < smallest.blob.size) {
+              smallest = { blob, quality: q, width: scaledW, height: scaledH };
+            }
+            if (blob.size <= targetBytes) {
+              best = { blob, quality: q, width: scaledW, height: scaledH };
+              break;
+            }
+          }
+          if (best || attempts >= MAX_ENCODE_ATTEMPTS || timedOut) break;
+        }
+      }
 
-    return {
-      blob: chosen.blob,
-      quality: chosen.quality,
-      attempts,
-      metTarget: !!best
-    };
+      const chosen = best || smallest;
+      if (!chosen || !chosen.blob) {
+        throw new OptimizationError("Could not produce a compressed image meeting the requested constraints.");
+      }
+
+      return {
+        blob: chosen.blob,
+        quality: chosen.quality,
+        attempts,
+        metTarget: !!best,
+        timedOut
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   Preflight.imageOptimizer = {
     optimizeImage,
     sampleContentHint,
+    targetSizeSearch,
+    MAX_ENCODE_ATTEMPTS,
     OptimizationError,
     computeTargetDimensions
   };

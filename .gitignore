@@ -4,3 +4,7 @@ Thumbs.db
 .vscode/
 .idea/
 node_modules/
+.kiro/
+dist/
+coverage/
+

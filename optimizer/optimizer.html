@@ -22,11 +22,21 @@
     <p class="privacy-note">Zero Network Transmission · Local In-Memory Processing</p>
   </header>
 
+  <nav id="mainNav" class="main-nav" role="navigation" aria-label="PREflight tools">
+    <button class="nav-btn is-active" role="tab" aria-selected="true" data-panel="home" type="button">Home</button>
+    <button class="nav-btn" role="tab" aria-selected="false" data-panel="screenshot" type="button">Screenshot</button>
+    <button class="nav-btn" role="tab" aria-selected="false" data-panel="image" type="button">Images</button>
+    <button class="nav-btn" role="tab" aria-selected="false" data-panel="pdf" type="button">PDFs</button>
+    <button class="nav-btn" role="tab" aria-selected="false" data-panel="text" type="button">Text &amp; Code</button>
+    <button class="nav-btn" role="tab" aria-selected="false" data-panel="files" type="button">All Files</button>
+    <button class="nav-btn" role="tab" aria-selected="false" data-panel="recent" type="button">Recent</button>
+  </nav>
+
   <main class="page">
-    <!-- Empty state: shown until a file is loaded -->
-    <section id="emptyState" class="empty-state">
+    <!-- Panel 1: Home / Overview -->
+    <section id="panel-home" role="tabpanel" class="empty-state">
       <div class="empty-box">
-        <h1 class="page-heading">File Preparation</h1>
+        <h1 class="home-tagline">Prepare files before you upload.</h1>
         <p class="page-subheading">Select, paste, or drop any file (Image, PDF, CSV, Text, Document) to prepare, inspect, or optimize locally.</p>
         <div class="row-2 empty-actions">
           <button id="emptySelectBtn" class="btn btn-primary" type="button">Add File</button>
@@ -35,11 +45,46 @@
         <div id="emptyDropZone" class="drop-zone" tabindex="0" role="button" aria-label="Drop a file here, or press Control V to paste">
           Drop any file here, or press <kbd>Ctrl</kbd>+<kbd>V</kbd> to paste
         </div>
-        <input id="emptyFileInput" type="file" hidden />
+        <input id="emptyFileInput" type="file" multiple hidden />
+        <p class="privacy-note" style="margin-top: 14px;">Processed locally on your device.</p>
+
+        <div class="quick-action-cards">
+          <button class="qa-card" type="button" data-panel="image">Compress Image</button>
+          <button class="qa-card" type="button" data-panel="pdf">Optimize PDF</button>
+          <button class="qa-card" type="button" data-panel="text">Clean Text / CSV</button>
+          <button class="qa-card" type="button" data-panel="screenshot">Capture Screenshot</button>
+        </div>
       </div>
     </section>
 
-    <!-- Working state: shown once a file is loaded -->
+    <!-- Panel 2: Screenshot Workspace -->
+    <section id="panel-screenshot" role="tabpanel" class="empty-state" hidden>
+      <div class="empty-box">
+        <h1 class="page-heading">Screenshot Workspace</h1>
+        <p class="page-subheading">Snip an area from your active browser tab or capture the full tab. Optimized and prepared completely in-memory.</p>
+        <div class="row-2 empty-actions">
+          <button id="screenshotAreaBtn" class="btn btn-primary" type="button">Select Area to Snip</button>
+          <button id="screenshotTabBtn" class="btn btn-secondary" type="button">Capture Full Tab</button>
+        </div>
+        <p id="screenshotStatus" class="status" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <!-- Panel 7: Recent History -->
+    <section id="panel-recent" role="tabpanel" class="empty-state" hidden>
+      <div class="empty-box" style="text-align: left;">
+        <div class="work-header" style="border-bottom:none; margin-bottom: 8px;">
+          <div class="work-header-info">
+            <h1 class="page-heading" style="font-size:20px; margin:0;">Recent Activity</h1>
+            <p class="page-subheading" style="margin:0;">Session-scoped history of prepared and optimized files.</p>
+          </div>
+          <button id="clearHistoryBtn" class="btn btn-secondary btn-small" type="button">Clear History</button>
+        </div>
+        <div id="historyList" class="history-list"></div>
+      </div>
+    </section>
+
+    <!-- Working state: active file workspace -->
     <section id="workState" class="work" hidden>
       <div class="work-header">
         <div class="work-header-info">
@@ -50,10 +95,10 @@
         <button id="newFileBtn" class="btn btn-secondary btn-small" type="button">Open Different File</button>
       </div>
 
-      <p id="workError" class="work-error" role="alert" hidden></p>
+      <p id="workError" class="work-error" role="alert" aria-live="assertive" hidden></p>
       <p id="processingNotice" class="processing-notice" role="status" aria-live="polite" hidden>Processing file locally…</p>
 
-      <!-- Panel 1: Image Workspace -->
+      <!-- Panel 3: Image Workspace -->
       <section id="imagePanel" class="file-panel" hidden>
         <div class="size-summary">
           <div class="size-block">
@@ -78,77 +123,122 @@
 
         <section class="preview-panel" aria-label="Before and after preview">
           <div class="preview-header">
-            <div class="preview-header-left">
-              <span class="panel-label">Visual Comparison</span>
-              <button id="cropToggleBtn" class="btn btn-secondary btn-small" type="button" style="margin-left: 12px;">✂ Crop / Snip Image</button>
-            </div>
+            <span class="panel-label">Visual Comparison</span>
             <div class="preview-tabs" role="tablist">
               <button id="tabBefore" class="preview-tab" role="tab" aria-selected="false" type="button">Before (Original)</button>
               <button id="tabAfter" class="preview-tab is-active" role="tab" aria-selected="true" type="button">After (Optimized)</button>
             </div>
           </div>
-          <div id="previewImageWrap" class="preview-image-wrap">
+          <div class="preview-image-wrap">
             <img id="previewImage" alt="Image preview" />
           </div>
-          <div id="cropWorkspace" class="crop-workspace" hidden>
-            <div class="crop-canvas-wrap">
-              <canvas id="cropCanvas"></canvas>
+        </section>
+
+        <!-- Dynamic Before/After Split Comparison Slider -->
+        <div id="sliderContainer" style="position:relative;"></div>
+
+        <div id="singleFileControls">
+          <section class="controls-panel" aria-label="Compression controls">
+            <h2 class="panel-title">Compression Parameters</h2>
+
+            <!-- Compression Presets Bar -->
+            <div id="presetBar" class="preset-bar" role="group" aria-label="Compression presets">
+              <button class="preset-btn" data-preset="light" type="button">Light (90%)</button>
+              <button class="preset-btn is-active" data-preset="balanced" type="button">Balanced (75%)</button>
+              <button class="preset-btn" data-preset="strong" type="button">Strong (50%)</button>
+              <button class="preset-btn" data-preset="target" type="button">Target Size</button>
+              <span id="presetLabel" class="preset-label">Balanced</span>
             </div>
-            <div class="crop-toolbar">
-              <span id="cropDimBadge" class="crop-dim-badge">Click and drag on image to select custom area</span>
-              <div class="crop-toolbar-btns">
-                <button id="applyCropBtn" class="btn btn-primary btn-small" type="button" disabled>Apply Crop</button>
-                <button id="cancelCropBtn" class="btn btn-secondary btn-small" type="button">Cancel</button>
+
+            <!-- Quality Slider Section -->
+            <div id="qualitySliderSection">
+              <label class="slider-label" for="qualitySlider">
+                <span>Quality Level</span>
+                <span class="slider-ends">
+                  <span>Higher Compression</span>
+                  <span>Higher Fidelity</span>
+                </span>
+              </label>
+              <input id="qualitySlider" type="range" min="35" max="95" step="1" value="75" />
+              <p class="quality-readout">Selected Quality: <span id="qualityValue">75</span>%</p>
+            </div>
+
+            <!-- Target Size Preset & Custom Row -->
+            <div id="targetSizeRow" class="control-row" hidden>
+              <label class="control-label" for="targetSizePreset">Target File Size</label>
+              <select id="targetSizePreset">
+                <option value="256000">250 KB</option>
+                <option value="524288" selected>512 KB</option>
+                <option value="1048576">1 MB</option>
+                <option value="2097152">2 MB</option>
+                <option value="5242880">5 MB</option>
+                <option value="custom">Custom…</option>
+              </select>
+            </div>
+            <div id="customTargetRow" class="control-row" hidden style="flex-direction:column; align-items:flex-start; gap:4px;">
+              <div style="display:flex; gap:8px; width:100%;">
+                <input id="customTargetInput" type="number" class="text-input" placeholder="e.g. 500" min="1" max="999999" style="flex:1;" />
+                <select id="customTargetUnit">
+                  <option value="kb" selected>KB</option>
+                  <option value="mb">MB</option>
+                </select>
+              </div>
+              <span id="customTargetError" class="inline-error" role="alert" aria-live="assertive" hidden>Enter a value between 1 and 999,999.</span>
+            </div>
+
+            <div class="control-row">
+              <span class="control-label">Target Format</span>
+              <div class="segmented" role="group" aria-label="Output format">
+                <button class="segmented-btn is-active" data-format="auto" type="button">Auto</button>
+                <button class="segmented-btn" data-format="image/webp" type="button">WebP</button>
+                <button class="segmented-btn" data-format="image/jpeg" type="button">JPEG</button>
+                <button class="segmented-btn" data-format="image/png" type="button">PNG</button>
               </div>
             </div>
-          </div>
-        </section>
 
-        <section class="controls-panel" aria-label="Compression controls">
-          <h2 class="panel-title">Compression Parameters</h2>
-          <label class="slider-label" for="qualitySlider">
-            <span>Quality Level</span>
-            <span class="slider-ends">
-              <span>Higher Compression</span>
-              <span>Higher Fidelity</span>
-            </span>
-          </label>
-          <input id="qualitySlider" type="range" min="35" max="95" step="1" value="82" />
-          <p class="quality-readout">Selected Quality: <span id="qualityValue">82</span>%</p>
-
-          <div class="control-row">
-            <span class="control-label">Target Format</span>
-            <div class="segmented" role="group" aria-label="Output format">
-              <button class="segmented-btn is-active" data-format="auto" type="button">Auto</button>
-              <button class="segmented-btn" data-format="image/webp" type="button">WebP</button>
-              <button class="segmented-btn" data-format="image/jpeg" type="button">JPEG</button>
-              <button class="segmented-btn" data-format="image/png" type="button">PNG</button>
+            <div class="control-row">
+              <label class="control-label" for="resizeSelect">Maximum Dimensions</label>
+              <select id="resizeSelect">
+                <option value="0">Original Dimensions</option>
+                <option value="2400">Constrain to 2400px</option>
+                <option value="1920">Constrain to 1920px (1080p)</option>
+                <option value="1280">Constrain to 1280px (720p)</option>
+              </select>
             </div>
-          </div>
 
-          <div class="control-row">
-            <label class="control-label" for="resizeSelect">Maximum Dimensions</label>
-            <select id="resizeSelect">
-              <option value="0">Original Dimensions</option>
-              <option value="2400">Constrain to 2400px</option>
-              <option value="1920">Constrain to 1920px (1080p)</option>
-              <option value="1280">Constrain to 1280px (720p)</option>
-            </select>
-          </div>
+            <div class="control-row" style="flex-direction:column; align-items:flex-start; gap:4px;">
+              <label style="display:flex; align-items:center; gap:6px; font-size:13px; font-weight:700;">
+                <input type="checkbox" id="exifRemoveCheckbox" checked disabled /> Strip EXIF Metadata
+              </label>
+              <p class="exif-description">EXIF data can include: GPS location, device model and serial number, capture timestamp, and camera settings. Canvas re-encoding strips all EXIF fields automatically.</p>
+            </div>
 
-          <button id="reoptimizeBtn" class="btn btn-secondary btn-block" type="button">Apply &amp; Re-optimize</button>
-        </section>
+            <button id="reoptimizeBtn" class="btn btn-secondary btn-block" type="button">Apply &amp; Re-optimize</button>
+          </section>
 
-        <section class="actions-panel" aria-label="Actions">
-          <button id="copyBtn" class="btn btn-primary btn-block" type="button">Copy Optimized to Clipboard</button>
+          <section class="actions-panel" aria-label="Actions">
+            <button id="prepareForUploadBtn" class="btn btn-primary btn-block" type="button" title="Load a file first" disabled>Prepare for Upload</button>
+            <button id="copyBtn" class="btn btn-secondary btn-block" type="button">Copy Optimized to Clipboard</button>
+            <div class="row-2">
+              <button id="downloadBtn" class="btn btn-secondary" type="button">Download Optimized</button>
+              <button id="downloadOriginalBtn" class="btn btn-secondary" type="button">Download Original</button>
+            </div>
+          </section>
+        </div>
+
+        <!-- Batch Mode Processing Container -->
+        <div id="batchContainer" class="batch-container" hidden>
+          <h2 class="panel-title">Batch Image Processing</h2>
+          <div id="batchFileList" class="batch-file-list"></div>
+          <div id="batchSummary" class="batch-summary" hidden></div>
           <div class="row-2">
-            <button id="downloadBtn" class="btn btn-secondary" type="button">Download Optimized</button>
-            <button id="downloadOriginalBtn" class="btn btn-secondary" type="button">Download Original</button>
+            <button id="batchStartBtn" class="btn btn-primary" type="button">Start Batch Optimization</button>
+            <button id="batchDownloadAllBtn" class="btn btn-secondary" type="button" disabled>Download All Optimized</button>
           </div>
-        </section>
+        </div>
       </section>
 
-      <!-- Panel 2: PDF Workspace -->
+      <!-- Panel 4: PDF Workspace -->
       <section id="pdfPanel" class="file-panel" hidden>
         <div class="tool-tabs" role="tablist">
           <button id="pdfTabCompress" class="tool-tab is-active" type="button">Compress PDF</button>
@@ -193,7 +283,7 @@
 
         <!-- PDF Sub-tool 3: Merge -->
         <div id="pdfMergeView" class="tool-subview" hidden>
-          <p class="tool-explainer">Combine multiple PDF files into one. Arrange their order below:</p>
+          <p class="tool-explainer">Combine multiple PDF files into one. Arrange their order below (drag to reorder):</p>
           <div id="pdfQueueList" class="pdf-queue"></div>
           <button id="addPdfToQueueBtn" class="btn btn-secondary btn-block" type="button">+ Add Another PDF</button>
           <input id="pdfQueueInput" type="file" accept="application/pdf" multiple hidden />
@@ -202,7 +292,7 @@
         </div>
       </section>
 
-      <!-- Panel 3: Text & CSV Workspace -->
+      <!-- Panel 5: Text & CSV Workspace -->
       <section id="textPanel" class="file-panel" hidden>
         <div class="stats-card">
           <h2 class="panel-title">Structure Analysis</h2>
@@ -236,7 +326,7 @@
         </div>
       </section>
 
-      <!-- Panel 4: Document / Other File View -->
+      <!-- Panel 6: Document / Other File View -->
       <section id="docPanel" class="file-panel" hidden>
         <div class="stats-card">
           <h2 class="panel-title">Document Inspection</h2>
@@ -249,15 +339,18 @@
     </section>
   </main>
 
-  <script src="../lib/pdf-lib.min.js"></script>
   <script src="../core/utils.js"></script>
-  <script src="../core/pdf-processor.js"></script>
-  <script src="../core/text-processor.js"></script>
   <script src="../core/file-analyzer.js"></script>
+  <script src="../core/text-processor.js"></script>
   <script src="../core/smart-profile.js"></script>
   <script src="../core/image-optimizer.js"></script>
+  <script src="../core/pdf-processor.js"></script>
   <script src="../core/clipboard.js"></script>
   <script src="../core/downloader.js"></script>
+  <script src="../core/result-model.js"></script>
+  <script src="../core/batch-processor.js"></script>
+  <script src="../core/recent-history.js"></script>
+  <script src="comparison-slider.js"></script>
   <script src="optimizer.js"></script>
 </body>
 </html>

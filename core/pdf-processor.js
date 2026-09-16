@@ -60,8 +60,8 @@
     const doc = await PDFLib.PDFDocument.load(buffer, { ignoreEncryption: true });
 
     // Optimize metadata and history
-    doc.setProducer("Preflight");
-    doc.setCreator("Preflight Local Optimizer");
+    doc.setProducer("");
+    doc.setCreator("");
     doc.setModificationDate(new Date());
 
     // Save with cross-reference object stream compression
@@ -140,27 +140,41 @@
     const PDFLib = getPdfLib();
     const doc = await PDFLib.PDFDocument.create();
     const font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
-    const fontSize = 10;
-    const lineHeight = 14;
-    const margin = 40;
-    const pageWidth = 595.28; // A4
-    const pageHeight = 841.89;
-    const contentWidth = pageWidth - margin * 2;
-    const linesPerPage = Math.floor((pageHeight - margin * 2) / lineHeight);
 
-    const title = (options && options.title) || "Document";
-    const rawLines = String(text || "").replace(/\r\n/g, "\n").split("\n");
+    const opts = options || {};
+    const fontSize = Math.max(8, Math.min(16, Number(opts.fontSize) || 10));
+    const lineHeight = Math.round(fontSize * 1.4);
 
-    // Word wrap lines to content width
+    // Page size
+    const isLetter = (opts.pageSize || "").toLowerCase() === "letter";
+    const pageWidth = isLetter ? 612 : 595.28;
+    const pageHeight = isLetter ? 792 : 841.89;
+
+    // Margins (clamped between 10mm and 50mm, default ~14mm)
+    const marginMm = Math.max(10, Math.min(50, Number(opts.marginMm) || 14));
+    const marginPt = marginMm * 2.8346;
+
+    const contentWidth = pageWidth - marginPt * 2;
+    const linesPerPage = Math.max(1, Math.floor((pageHeight - marginPt * 2) / lineHeight));
+
+    const title = String(opts.title || "Document").slice(0, 100);
+    doc.setTitle(title);
+    doc.setProducer("");
+    doc.setCreator("");
+
+    const rawLines = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+
+    // Word wrap lines to content width without splitting mid-word
     const wrappedLines = [];
     for (const rawLine of rawLines) {
       if (!rawLine.trim()) {
         wrappedLines.push("");
         continue;
       }
-      const words = rawLine.split(" ");
+      const words = rawLine.split(/\s+/);
       let currentLine = "";
       for (const word of words) {
+        if (!word) continue;
         const testLine = currentLine ? `${currentLine} ${word}` : word;
         const testWidth = font.widthOfTextAtSize(testLine, fontSize);
         if (testWidth > contentWidth && currentLine) {
@@ -177,12 +191,12 @@
     for (let i = 0; i < wrappedLines.length; i += linesPerPage) {
       const page = doc.addPage([pageWidth, pageHeight]);
       const chunk = wrappedLines.slice(i, i + linesPerPage);
-      let y = pageHeight - margin;
+      let y = pageHeight - marginPt;
 
       for (const line of chunk) {
         if (line) {
           page.drawText(line, {
-            x: margin,
+            x: marginPt,
             y: y - fontSize,
             size: fontSize,
             font,
@@ -206,32 +220,56 @@
    */
   function parsePageRanges(rangeStr, totalPages) {
     if (!rangeStr || !rangeStr.trim()) {
-      return Array.from({ length: totalPages }, (_, i) => i);
+      throw new Error("No page numbers specified.");
     }
 
+    const maxPages = Number(totalPages) || 1;
     const indices = new Set();
     const parts = rangeStr.split(/[,;\s]+/);
 
     for (const part of parts) {
       if (!part) continue;
       if (part.includes("-")) {
-        const [startStr, endStr] = part.split("-");
+        const bounds = part.split("-");
+        if (bounds.length !== 2) {
+          throw new Error(`Invalid page range: '${part}'.`);
+        }
+        const startStr = bounds[0].trim();
+        const endStr = bounds[1].trim();
+        if (!/^\d+$/.test(startStr) || !/^\d+$/.test(endStr)) {
+          throw new Error(`Invalid page number: '${part}'.`);
+        }
         const start = parseInt(startStr, 10);
         const end = parseInt(endStr, 10);
-        if (!isNaN(start) && !isNaN(end)) {
-          const s = Math.max(1, Math.min(start, end));
-          const e = Math.min(totalPages, Math.max(start, end));
-          for (let p = s; p <= e; p++) indices.add(p - 1);
+        if (start < 1 || start > maxPages) {
+          throw new Error(`Page ${start} is out of range (document has ${maxPages} pages).`);
+        }
+        if (end < 1 || end > maxPages) {
+          throw new Error(`Page ${end} is out of range (document has ${maxPages} pages).`);
+        }
+        const s = Math.min(start, end);
+        const e = Math.max(start, end);
+        for (let p = s; p <= e; p++) {
+          indices.add(p - 1);
         }
       } else {
-        const num = parseInt(part, 10);
-        if (!isNaN(num) && num >= 1 && num <= totalPages) {
-          indices.add(num - 1);
+        const trimmed = part.trim();
+        if (!/^\d+$/.test(trimmed)) {
+          throw new Error(`Invalid page number: '${part}'.`);
         }
+        const num = parseInt(trimmed, 10);
+        if (num < 1 || num > maxPages) {
+          throw new Error(`Page ${num} is out of range (document has ${maxPages} pages).`);
+        }
+        indices.add(num - 1);
       }
     }
 
-    return Array.from(indices).sort((a, b) => a - b);
+    const result = Array.from(indices).sort((a, b) => a - b);
+    if (result.length === 0) {
+      throw new Error("No valid pages were specified.");
+    }
+    return result;
   }
 
   Preflight.pdfProcessor = {

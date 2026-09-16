@@ -22,7 +22,13 @@
   const { determineStrategy } = Preflight.smartProfile;
   const { optimizeImage } = Preflight.imageOptimizer;
 
-  const LIMIT_PATTERN = /max(?:imum)?\s*(?:file\s*)?size[^\n\d]{0,15}(\d+(?:\.\d+)?)\s*(kb|mb)\b/i;
+  const LIMIT_PATTERNS = [
+    /max(?:imum)?\s*(?:file\s*)?size[^\n\d]{0,15}(\d+(?:\.\d+)?)\s*(kb|mb)\b/i,
+    /files?\s+(?:must\s+be|should\s+be|up\s+to|under|below|no\s+(?:larger|bigger)\s+than)[^\d]{0,10}(\d+(?:\.\d+)?)\s*(kb|mb)\b/i,
+    /(?:upload|attachment)\s+limit[^\d]{0,10}(\d+(?:\.\d+)?)\s*(kb|mb)\b/i,
+    /limit[:\s]+(\d+(?:\.\d+)?)\s*(kb|mb)\b/i,
+    /(\d+(?:\.\d+)?)\s*(kb|mb)\s+(?:max|limit|maximum)/i
+  ];
 
   let settingsCache = { uploadOptimizerEnabled: true };
   const openOverlays = new WeakMap();
@@ -83,6 +89,9 @@
     if (existing) existing.close();
 
     const limitBytes = detectUploadLimit(input);
+    const largeFileWarning = files.some((f) => f && f.size > 100 * 1024 * 1024)
+      ? "One or more files exceed 100 MB. Processing may be slow or limited."
+      : null;
 
     if (files.length === 1) {
       const file = files[0];
@@ -96,6 +105,7 @@
         fileType: fileInfo.label,
         category: fileInfo.category,
         targetLimitBytes: limitBytes,
+        largeFileWarning,
         canCompress,
         canMerge: false,
         onProcess: async (mode) => {
@@ -138,11 +148,12 @@
     const allImages = files.every((f) => isSupportedImageFile(f));
 
     const overlay = Preflight.uploadUI.showReviewCard({
-      fileName: `${files[0].name} (+${files.length - 1} other files)`,
+      fileName: `${files.length} files selected`,
       fileSize: totalBytes,
-      fileType: allPdfs ? `${files.length} PDFs` : (allImages ? `${files.length} Images` : `${files.length} Files`),
-      category: allPdfs ? "pdf" : (allImages ? "image" : "mixed"),
+      fileType: "Batch Upload",
+      category: allPdfs ? "pdf" : allImages ? "image" : "other",
       targetLimitBytes: limitBytes,
+      largeFileWarning,
       canCompress: allImages,
       canMerge: allPdfs,
       onProcess: async (mode) => {
@@ -348,8 +359,33 @@
   }
 
   function detectUploadLimit(input) {
+    if (!input) return null;
+
+    // 1. Direct data attribute check
+    const dataAttrs = ["data-max-size", "data-file-size", "data-limit", "data-max-file-size"];
+    for (const attr of dataAttrs) {
+      const val = input.getAttribute(attr);
+      if (val) {
+        const parsed = parseFloat(val);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          // If > 10000 assume bytes, else assume KB
+          return Math.round(parsed > 10000 ? parsed : parsed * 1024);
+        }
+      }
+    }
+
+    // 2. DOM text scopes including aria-describedby
     const scopes = [];
     if (input.form) scopes.push(input.form);
+
+    const ariaDescribedBy = input.getAttribute("aria-describedby");
+    if (ariaDescribedBy) {
+      ariaDescribedBy.split(/\s+/).forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) scopes.push(el);
+      });
+    }
+
     let node = input;
     for (let i = 0; i < 4 && node.parentElement; i += 1) {
       node = node.parentElement;
@@ -360,16 +396,24 @@
     }
 
     for (const scope of scopes) {
+      if (!scope) continue;
       const text = (scope.textContent || "").slice(0, 4000);
-      const match = text.match(LIMIT_PATTERN);
-      if (match) {
-        const value = parseFloat(match[1]);
-        const unit = match[2].toLowerCase();
-        if (Number.isFinite(value)) {
-          return Math.round(value * (unit === "mb" ? 1024 * 1024 : 1024));
+      for (const pattern of LIMIT_PATTERNS) {
+        const match = text.match(pattern);
+        if (match) {
+          const value = parseFloat(match[1]);
+          const unit = (match[2] || "").toLowerCase();
+          if (Number.isFinite(value) && value > 0) {
+            return Math.round(value * (unit === "mb" ? 1024 * 1024 : 1024));
+          }
         }
       }
     }
     return null;
   }
+
+  Preflight.uploadDetector = {
+    detectUploadLimit,
+    LIMIT_PATTERNS
+  };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -1,0 +1,14 @@
+{
+  "name": "preflight",
+  "version": "1.0.0",
+  "description": "Optimize before you upload. Review, compress, and prepare files locally before uploading.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest --run"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0",
+    "fast-check": "^3.19.0",
+    "jsdom": "^24.1.0"
+  }
+}

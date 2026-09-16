@@ -79,6 +79,11 @@
       Object.keys(props).forEach((key) => {
         if (key === "className") node.className = props[key];
         else if (key === "textContent") node.textContent = props[key];
+        else if (key === "title") node.title = props[key];
+        else if (key === "alt") node.alt = props[key];
+        else if (key === "placeholder") node.placeholder = props[key];
+        else if (key === "id") node.id = props[key];
+        else if (key === "type") node.type = props[key];
         else node.setAttribute(key, props[key]);
       });
     }
@@ -119,7 +124,7 @@
    * showReviewCard(options) -> handle
    * options: {
    *   fileName, fileSize, fileType, category, targetLimitBytes,
-   *   canCompress, canMerge,
+   *   canCompress, canMerge, largeFileWarning,
    *   onProcess(mode), onContinueOriginal(), onCancel(),
    *   onContinueUpload(processedFile), onDownload(blob, name), onCopy(blob),
    *   onOpenWorkspace()
@@ -135,7 +140,12 @@
 
     const handleKeyDown = setupEscapeHandler(cleanup, options.onCancel);
 
-    const card = el("div", { className: "pf-card" });
+    const card = el("div", {
+      className: "pf-card",
+      role: "dialog",
+      "aria-label": "PREflight file review",
+      "aria-modal": "true"
+    });
     shadow.appendChild(card);
     document.documentElement.appendChild(host);
 
@@ -156,6 +166,17 @@
       const meta = el("p", { className: "pf-meta", textContent: `${options.fileType} \u00B7 ${formatBytes(options.fileSize)}` });
 
       const children = [header, name, meta];
+
+      if (options.largeFileWarning) {
+        const warnEl = el("p", {
+          className: "pf-error",
+          textContent: options.largeFileWarning
+        });
+        warnEl.style.background = "#fffbeb";
+        warnEl.style.color = "#92400e";
+        warnEl.style.borderColor = "#fde68a";
+        children.push(warnEl);
+      }
 
       if (options.targetLimitBytes) {
         const targetBadge = el("div", {
@@ -277,22 +298,33 @@
       ]);
       const grid = el("div", { className: "pf-sizes-grid" }, [colOrig, colOpt, colSaved]);
 
+      const noReduction = result.optimizedSize >= result.originalSize;
+      const noteText = noReduction
+        ? "No size reduction was achieved. The original file will be used."
+        : (result.alreadyOptimized
+          ? "File was already optimally sized. Original quality preserved."
+          : "Processing complete. Confirm to continue upload.");
+
       const note = el("p", {
         className: "pf-status-note",
-        textContent: result.alreadyOptimized
-          ? "File was already optimally sized. Original quality preserved."
-          : "Processing complete. Confirm to continue upload."
+        textContent: noteText,
+        role: "status",
+        "aria-live": "polite"
       });
 
       // Actions: Explicit choice
       const continueUploadBtn = el("button", {
         className: "pf-btn pf-btn-primary",
         type: "button",
-        textContent: "Continue Upload"
+        textContent: noReduction ? "Continue with Original File" : "Continue Upload"
       });
       continueUploadBtn.addEventListener("click", () => {
         cleanup();
-        if (options.onContinueUpload) options.onContinueUpload(result.file);
+        if (noReduction) {
+          if (options.onContinueOriginal) options.onContinueOriginal();
+        } else {
+          if (options.onContinueUpload) options.onContinueUpload(result.file);
+        }
       });
 
       const btnRow = el("div", { className: "pf-btn-row" });
@@ -342,7 +374,12 @@
       });
       const header = el("div", { className: "pf-header-row" }, [title, closeBtn]);
 
-      const errorEl = el("div", { className: "pf-error", textContent: msg });
+      const errorEl = el("div", {
+        className: "pf-error",
+        textContent: msg,
+        role: "alert",
+        "aria-live": "assertive"
+      });
 
       const continueOriginalBtn = el("button", {
         className: "pf-btn pf-btn-primary",
@@ -370,5 +407,5 @@
     };
   }
 
-  Preflight.uploadUI = { showReviewCard };
+  Preflight.uploadUI = { showReviewCard, truncate };
 })(typeof window !== "undefined" ? window : globalThis);
