@@ -264,7 +264,16 @@
               <span class="size-sub">space saved</span>
             </div>
           </div>
-          <p class="tool-explainer">Optimizes cross-reference object streams, removes redundant dictionary entries, and strips non-essential metadata while keeping all pages and text intact.</p>
+          <div class="control-row" style="margin: 16px 0 10px 0;">
+            <span class="control-label">Compression Level</span>
+            <div id="pdfLevelGroup" class="segmented" role="group" aria-label="PDF compression level">
+              <button class="segmented-btn" data-pdf-level="extreme" type="button" title="Purges non-essential dictionaries & outline for maximum space savings">Extreme</button>
+              <button class="segmented-btn" data-pdf-level="strong" type="button" title="Purges metadata and optimizes all object streams">Strong</button>
+              <button class="segmented-btn is-active" data-pdf-level="normal" type="button" title="Standard safe stream compression">Normal</button>
+              <button class="segmented-btn" data-pdf-level="light" type="button" title="Minimal lossless cleanup">Light</button>
+            </div>
+          </div>
+          <p id="pdfLevelExplainer" class="tool-explainer">Normal: Compresses cross-reference object streams while keeping all pages, text, and vector graphics intact.</p>
           <button id="runPdfCompressBtn" class="btn btn-primary btn-block" type="button">Compress PDF Locally</button>
           <button id="downloadPdfCompressedBtn" class="btn btn-secondary btn-block" type="button" disabled>Download Compressed PDF</button>
         </div>
@@ -344,6 +353,7 @@
   <script src="../core/text-processor.js"></script>
   <script src="../core/smart-profile.js"></script>
   <script src="../core/image-optimizer.js"></script>
+  <script src="../lib/pdf-lib.min.js"></script>
   <script src="../core/pdf-processor.js"></script>
   <script src="../core/clipboard.js"></script>
   <script src="../core/downloader.js"></script>

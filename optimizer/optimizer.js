@@ -218,6 +218,8 @@
       pdfOrigSize: document.getElementById("pdfOrigSize"),
       pdfOptSize: document.getElementById("pdfOptSize"),
       pdfReductionVal: document.getElementById("pdfReductionVal"),
+      pdfLevelButtons: Array.from(document.querySelectorAll("[data-pdf-level]")),
+      pdfLevelExplainer: document.getElementById("pdfLevelExplainer"),
       runPdfCompressBtn: document.getElementById("runPdfCompressBtn"),
       downloadPdfCompressedBtn: document.getElementById("downloadPdfCompressedBtn"),
 
@@ -1190,19 +1192,42 @@
     els.pdfTabSplit.addEventListener("click", () => setPdfSubView("split"));
     els.pdfTabMerge.addEventListener("click", () => setPdfSubView("merge"));
 
+    let selectedPdfLevel = "normal";
+
+    const PDF_LEVEL_EXPLAINERS = {
+      extreme: "Extreme: Aggressively purges document outlines, non-essential metadata, and packs object streams for maximum size reduction.",
+      strong: "Strong: Purges all metadata, author/creator info, and optimizes cross-reference object streams.",
+      normal: "Normal: Standard object stream compression while preserving structure, text, and vector graphics.",
+      light: "Light: Minimal lossless cleanup of duplicate cross-reference entries."
+    };
+
+    if (els.pdfLevelButtons) {
+      els.pdfLevelButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const level = btn.dataset.pdfLevel;
+          if (!level) return;
+          selectedPdfLevel = level;
+          els.pdfLevelButtons.forEach((b) => b.classList.toggle("is-active", b === btn));
+          if (els.pdfLevelExplainer) {
+            els.pdfLevelExplainer.textContent = PDF_LEVEL_EXPLAINERS[level] || "";
+          }
+        });
+      });
+    }
+
     // Subview 1: Compress with Multi-stage notice
     els.runPdfCompressBtn.addEventListener("click", async () => {
       if (!pdfProcessor || !state.originalFile) return;
       const opId = ++currentPdfOpId;
       try {
-        setProcessing(true, "Loading PDF document…");
+        setProcessing(true, `Loading PDF document (Level: ${selectedPdfLevel})…`);
         await new Promise((r) => setTimeout(r, 60));
         if (opId !== currentPdfOpId) return;
 
         setProcessing(true, "Compressing object streams and removing redundant dictionaries…");
         clearError();
 
-        const result = await pdfProcessor.compressPdf(state.originalFile);
+        const result = await pdfProcessor.compressPdf(state.originalFile, selectedPdfLevel);
         if (opId !== currentPdfOpId) return;
 
         setProcessing(true, "Finalizing compressed output…");
@@ -1217,8 +1242,8 @@
 
         setActionStatus(
           result.alreadyOptimized
-            ? "PDF is already optimally compressed. Original preserved."
-            : `PDF compressed! Saved ${formatPercent(result.reductionPercent)}.`,
+            ? "PDF is already optimally compressed at this level. Original preserved."
+            : `PDF compressed (${selectedPdfLevel})! Saved ${formatPercent(result.reductionPercent)}.`,
           "success"
         );
       } catch (err) {

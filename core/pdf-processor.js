@@ -49,27 +49,52 @@
   }
 
   /**
-   * Compresses a PDF locally by enabling object stream compression,
-   * removing unreferenced objects, and stripping non-essential XMP metadata.
+   * Compresses a PDF locally.
+   * level: 'extreme' | 'strong' | 'normal' | 'light' (default: 'normal')
    */
-  async function compressPdf(fileOrBlob) {
+  async function compressPdf(fileOrBlob, level = "normal") {
     const PDFLib = getPdfLib();
     const buffer = await toArrayBuffer(fileOrBlob);
     const originalSize = buffer.byteLength;
 
     const doc = await PDFLib.PDFDocument.load(buffer, { ignoreEncryption: true });
 
-    // Optimize metadata and history
-    doc.setProducer("");
-    doc.setCreator("");
-    doc.setModificationDate(new Date());
+    // Level-specific optimization
+    if (level === "extreme" || level === "strong") {
+      doc.setProducer("");
+      doc.setCreator("");
+      doc.setTitle("");
+      doc.setAuthor("");
+      doc.setSubject("");
+      doc.setKeywords([]);
+      doc.setModificationDate(new Date());
+
+      // If extreme, remove document outline/bookmarks to save bytes
+      if (level === "extreme") {
+        try {
+          const catalog = doc.catalog;
+          if (catalog.has(PDFLib.PDFName.of("Outlines"))) {
+            catalog.delete(PDFLib.PDFName.of("Outlines"));
+          }
+          if (catalog.has(PDFLib.PDFName.of("PieceInfo"))) {
+            catalog.delete(PDFLib.PDFName.of("PieceInfo"));
+          }
+        } catch (_) {}
+      }
+    } else if (level === "normal") {
+      doc.setProducer("");
+      doc.setCreator("");
+      doc.setModificationDate(new Date());
+    }
 
     // Save with cross-reference object stream compression
-    const optimizedBytes = await doc.save({
+    const saveOptions = {
       useObjectStreams: true,
       addDefaultPage: false,
       objectsPerTick: 50
-    });
+    };
+
+    const optimizedBytes = await doc.save(saveOptions);
 
     const optimizedBlob = new Blob([optimizedBytes], { type: "application/pdf" });
     const optimizedSize = optimizedBlob.size;
@@ -82,7 +107,8 @@
       optimizedSize: finalBlob.size,
       reductionPercent: originalSize > 0 ? Math.max(0, (originalSize - finalBlob.size) / originalSize) : 0,
       alreadyOptimized: !isSmaller,
-      pageCount: doc.getPageCount()
+      pageCount: doc.getPageCount(),
+      level
     };
   }
 
