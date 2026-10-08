@@ -1,0 +1,1 @@
+let events = 0; document.getElementById('upload').addEventListener('input', () => document.getElementById('events').textContent = ++events); document.getElementById('upload').addEventListener('change', () => document.getElementById('events').textContent = ++events);

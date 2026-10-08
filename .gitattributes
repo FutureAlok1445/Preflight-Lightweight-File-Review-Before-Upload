@@ -1,0 +1,5 @@
+# Keep bundled upstream runtimes/notices intact and focus reviews on authored code.
+lib/** linguist-vendored -whitespace
+*.png binary
+*.wasm binary
+*.traineddata binary

@@ -16,7 +16,7 @@
   const { isMeaningfulReduction } = Preflight.smartProfile;
 
   const MAX_ENCODE_ATTEMPTS = 12; // hard bound for the target-size search
-  const QUALITY_LADDER = [90, 85, 80, 75, 70, 65, 60];
+  const QUALITY_LADDER = [90, 75, 60, 45, 30, 15];
 
   class OptimizationError extends Error {
     constructor(message) {
@@ -108,7 +108,7 @@
 
     // JPEG has no alpha channel -- flatten onto white so transparent
     // areas don't turn black/garbled.
-    if (format === "image/jpeg" && hasAlpha) {
+    if (format === "image/jpeg") {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, width, height);
     }
@@ -152,9 +152,10 @@
     if (!isSupportedImageFile(file)) {
       throw new OptimizationError("Unsupported image format.");
     }
+    await Preflight.utils.assertStaticImage(file);
     const opts = options || {};
     const format = opts.format || "image/webp";
-    const requestedQuality = opts.quality || 82;
+    const requestedQuality = Math.max(10, Math.min(95, Number(opts.quality) || 82));
     const maxDimension = opts.maxDimension || null;
     const targetBytes = opts.targetBytes || null;
 
@@ -167,7 +168,7 @@
 
     try {
       const hasAlpha = format === "image/jpeg" ? await detectAlpha(bitmap) : false;
-      const { width, height } = computeTargetDimensions(bitmap.width, bitmap.height, maxDimension);
+      let { width, height } = computeTargetDimensions(bitmap.width, bitmap.height, maxDimension);
 
       let blob, quality, attempts, metTarget, timedOut;
       if (targetBytes) {
@@ -183,6 +184,8 @@
         attempts = searchRes.attempts;
         metTarget = searchRes.metTarget;
         timedOut = searchRes.timedOut;
+        width = searchRes.width;
+        height = searchRes.height;
       } else {
         blob = await drawBitmapToBlob(bitmap, { width, height, format, quality: requestedQuality, hasAlpha });
         quality = format === "image/png" ? null : requestedQuality;
@@ -191,7 +194,10 @@
         timedOut = false;
       }
 
-      const meaningful = isMeaningfulReduction(file.size, blob.size);
+      if (blob.type !== format) throw new OptimizationError("Your browser cannot encode this output format.");
+      const intentionalChange = opts.forceOutput || (opts.convert && format !== Preflight.utils.normalizeMimeType(file.type, file.name)) ||
+        (maxDimension && (width !== bitmap.width || height !== bitmap.height));
+      const meaningful = intentionalChange || (targetBytes ? blob.size < file.size : isMeaningfulReduction(file.size, blob.size));
       const outputName = buildOutputFilename(file.name, format);
 
       // If the "optimization" didn't actually help, don't hand back a
@@ -208,12 +214,12 @@
         originalSize: file.size,
         optimizedSize: finalBlob.size,
         reductionPercent: file.size > 0 ? Math.max(0, (file.size - finalBlob.size) / file.size) : 0,
-        width,
-        height,
+        width: meaningful ? width : bitmap.width,
+        height: meaningful ? height : bitmap.height,
         format: finalType,
         quality: meaningful ? quality : null,
         alreadyOptimized: !meaningful,
-        metTarget,
+        metTarget: targetBytes ? finalBlob.size <= targetBytes : metTarget,
         timedOut: !!timedOut,
         attempts
       };
@@ -261,12 +267,12 @@
 
       if (!best && attempts < MAX_ENCODE_ATTEMPTS && !timedOut) {
         // Step-down in resolution (75% and 50% if needed)
-        const scaleSteps = format === "image/png" ? [0.75, 0.5] : [0.75];
+        const scaleSteps = format === "image/png" ? [0.75, 0.5, 0.35, 0.25] : [0.75, 0.5, 0.35];
         for (const scale of scaleSteps) {
           if (timedOut) break;
           const scaledW = Math.max(1, Math.round(width * scale));
           const scaledH = Math.max(1, Math.round(height * scale));
-          const subLadder = format === "image/png" ? [null] : [80, 70, 60];
+          const subLadder = format === "image/png" ? [null] : [45, 15];
           for (const q of subLadder) {
             if (timedOut) break;
             const blob = await tryQuality(scaledW, scaledH, q || 82);
@@ -290,6 +296,8 @@
 
       return {
         blob: chosen.blob,
+        width: chosen.width,
+        height: chosen.height,
         quality: chosen.quality,
         attempts,
         metTarget: !!best,

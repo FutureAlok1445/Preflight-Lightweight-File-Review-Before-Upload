@@ -53,6 +53,7 @@
       throw new UnsupportedFileError("This image is too large to process safely.");
     }
 
+    await Preflight.utils.assertStaticImage(file);
     const { width, height } = await readDimensions(file);
 
     if (!width || !height || width > MAX_DIMENSION * 4 || height > MAX_DIMENSION * 4) {
@@ -96,7 +97,7 @@
       let imgMeta = {};
       try {
         imgMeta = await analyzeImage(file);
-      } catch (e) {}
+      } catch (e) { return Object.assign(baseInfo, { supportedActions: ["review"], processingError: e.message }); }
       return Object.assign(baseInfo, imgMeta, {
         supportedActions: ["compress", "resize", "convert", "format", "preview", "copy"]
       });

@@ -43,6 +43,9 @@
   init();
 
   async function init() {
+    document.getElementById("openWorkspaceBtn").addEventListener("click", async () => {
+      try { await openWorkspaceWindow(); window.close(); } catch (error) { setStatus(error.message, "error"); }
+    });
     // Prevent accidental browser tab navigation when dropping files outside dropzone
     window.addEventListener("dragover", (e) => e.preventDefault(), false);
     window.addEventListener("drop", (e) => e.preventDefault(), false);
@@ -77,7 +80,7 @@
           throw new Error("Cannot take screenshots on internal Chrome pages.");
         }
 
-        chrome.tabs.sendMessage(tab.id, { type: "START_AREA_SCREENSHOT" }, (resp) => {
+        chrome.tabs.sendMessage(tab.id, { type: "START_AREA_SCREENSHOT" }, { frameId: 0 }, (resp) => {
           if (chrome.runtime.lastError) {
             setStatus("Please reload this page once to enable area screenshots.", "error");
             els.captureAreaBtn.disabled = false;
@@ -183,8 +186,9 @@
       if (file) await handleIncomingFile(file);
     });
     els.dropZone.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") els.fileInput.click();
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); els.fileInput.click(); }
     });
+    els.dropZone.addEventListener("click", () => els.fileInput.click());
   }
 
   // ---------- Shared incoming-file handler ----------
@@ -201,18 +205,8 @@
   }
 
   async function openWorkspaceWindow() {
-    try {
-      const resp = await chrome.runtime.sendMessage({ type: "OPEN_OPTIMIZER" });
-      if (!resp || !resp.ok) {
-        setStatus("PREflight workspace could not open in a separate window. The current tab will be used instead.", "error");
-        setTimeout(() => {
-          chrome.tabs.create({ url: chrome.runtime.getURL("optimizer/optimizer.html") });
-        }, 100);
-        setTimeout(() => setStatus(""), 5000);
-      }
-    } catch (err) {
-      setStatus("Could not open workspace.", "error");
-    }
+    const resp = await chrome.runtime.sendMessage({ type: "OPEN_OPTIMIZER" });
+    if (!resp || !resp.ok) throw new Error(resp?.error || "Could not open workspace.");
   }
 
   function timestampForFilename() {
@@ -285,7 +279,7 @@
     try {
       if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
         const store = await chrome.storage.local.get("preflight:settings");
-        if (store && store["preflight:settings"]) settings = store["preflight:settings"];
+        if (store && store["preflight:settings"]) settings = Object.assign({}, settings, store["preflight:settings"]);
       } else if (typeof localStorage !== "undefined") {
         const saved = localStorage.getItem("preflight:settings");
         if (saved) settings = Object.assign({}, settings, JSON.parse(saved));

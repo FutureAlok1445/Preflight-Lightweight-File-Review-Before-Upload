@@ -5,6 +5,17 @@ import "../core/utils.js";
 const { formatBytes, sanitizeFilename } = globalThis.Preflight.utils;
 
 describe("Utils Properties (formatBytes coverage & sanitizeFilename length)", () => {
+  it("accepts additional still image formats and refuses animation conversion", async () => {
+    for (const [name, mime] of [["a.bmp", "image/bmp"], ["a.gif", "image/gif"], ["a.avif", "image/avif"]]) {
+      expect(Preflight.utils.normalizeMimeType("", name)).toBe(mime);
+      expect(Preflight.utils.isSupportedImageType("", name)).toBe(true);
+    }
+    const gif = Uint8Array.from(atob("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="), c => c.charCodeAt(0));
+    await expect(Preflight.utils.assertStaticImage(new File([gif], "still.gif", { type: "image/gif" }))).resolves.toBeUndefined();
+    const animated = new Uint8Array(gif.length + gif.length - 20);
+    animated.set(gif.subarray(0, gif.length - 1)); animated.set(gif.subarray(19), gif.length - 1);
+    await expect(Preflight.utils.assertStaticImage(new File([animated], "animated.gif", { type: "image/gif" }))).rejects.toThrow(/preserve all frames/);
+  });
   it("formatBytes returns a valid pattern for any natural byte count", () => {
     fc.assert(
       fc.property(fc.nat(), (n) => {

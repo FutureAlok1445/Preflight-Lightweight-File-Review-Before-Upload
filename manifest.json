@@ -2,8 +2,12 @@
   "manifest_version": 3,
   "name": "Preflight",
   "short_name": "Preflight",
-  "version": "1.0.0",
+  "version": "1.3.0",
+  "minimum_chrome_version": "121",
   "description": "Optimize before you upload. Review, compress, and prepare files locally before uploading to any website.",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' data: blob:;"
+  },
   "action": {
     "default_popup": "popup/popup.html",
     "default_title": "Preflight",
@@ -27,27 +31,32 @@
   "permissions": [
     "activeTab",
     "storage",
+    "offscreen",
     "clipboardWrite",
-    "scripting",
-    "windows"
+    "scripting"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "<all_urls>"
+      ],
       "js": [
         "core/utils.js",
         "core/file-analyzer.js",
         "core/text-processor.js",
         "core/smart-profile.js",
         "core/image-optimizer.js",
+        "core/clipboard.js",
+        "core/downloader.js",
+        "core/annotation-editor.js",
         "upload/upload-ui.js",
         "upload/upload-detector.js",
         "upload/area-snipper.js"
       ],
-      "run_at": "document_idle",
+      "run_at": "document_start",
       "all_frames": true
     }
   ],
@@ -55,9 +64,12 @@
     {
       "resources": [
         "lib/pdf-lib.min.js",
-        "core/pdf-processor.js"
+        "core/pdf-processor.js",
+        "icons/logo.svg"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

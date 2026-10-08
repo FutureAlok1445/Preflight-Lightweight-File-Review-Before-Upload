@@ -7,4 +7,5 @@ node_modules/
 .kiro/
 dist/
 coverage/
+output/
 

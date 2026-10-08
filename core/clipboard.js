@@ -14,7 +14,7 @@
   const CLIPBOARD_SAFE_TYPES = ["image/png"]; // widest paste-target support
 
   function isClipboardImageSupported() {
-    return (
+    return typeof global.browser?.clipboard?.setImageData === 'function' || (
       typeof navigator !== "undefined" &&
       !!navigator.clipboard &&
       typeof navigator.clipboard.write === "function" &&
@@ -40,12 +40,16 @@
     }
 
     try {
+      if(typeof global.browser?.clipboard?.setImageData === 'function') {
+        const png = CLIPBOARD_SAFE_TYPES.includes(blob.type) ? blob : await toPng(blob);
+        await global.browser.clipboard.setImageData(await png.arrayBuffer(),'png');
+        return {ok:true,message:'Copied optimized image to clipboard.'};
+      }
       // Re-encoding creates an independent PNG blob — the original blob is never mutated
-      const pngBlob = CLIPBOARD_SAFE_TYPES.includes(blob.type)
-        ? blob
-        : await toPng(blob);
-
-      const item = new ClipboardItem({ [pngBlob.type]: pngBlob });
+      // Start the clipboard write during the click gesture. Encoding can finish
+      // through ClipboardItem's promise without losing user activation.
+      const pngBlob = CLIPBOARD_SAFE_TYPES.includes(blob.type) ? blob : toPng(blob);
+      const item = new ClipboardItem({ "image/png": pngBlob });
       await navigator.clipboard.write([item]);
       return { ok: true, message: "Copied optimized image to clipboard." };
     } catch (err) {

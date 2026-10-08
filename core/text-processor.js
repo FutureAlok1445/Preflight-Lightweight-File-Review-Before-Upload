@@ -11,6 +11,7 @@
   const MAX_TEXT_BYTES = 5 * 1024 * 1024; // 5 MB ceiling
 
   async function readText(fileOrBlob) {
+    if (fileOrBlob.size > MAX_TEXT_BYTES) throw new Error("File exceeds the 5 MB limit for text processing.");
     if (typeof fileOrBlob.text === "function") {
       return await fileOrBlob.text();
     }
@@ -104,16 +105,47 @@
    * Disambiguates duplicate column headers by appending _2, _3, etc.
    */
   function disambiguateHeaders(rawHeaders) {
-    const seen = Object.create(null);
+    const seen = new Set();
     return (rawHeaders || []).map((header, idx) => {
       const name = String(header || "").trim() || `col_${idx + 1}`;
-      if (!seen[name]) {
-        seen[name] = 1;
-        return name;
-      }
-      seen[name] += 1;
-      return `${name}_${seen[name]}`;
+      let unique = name, suffix = 2;
+      while (seen.has(unique)) unique = `${name}_${suffix++}`;
+      seen.add(unique);
+      return unique;
     });
+  }
+
+  function parseCSVRecords(content, delimiter = ",") {
+    const text = String(content).replace(/^\uFEFF/, "");
+    const records = []; let row = [], field = "", quoted = false, wasQuoted = false, closed = false;
+    const pushField = () => { row.push(wasQuoted ? field : field.trim()); field = ""; wasQuoted = closed = false; };
+    const pushRow = () => { pushField(); if (row.some(value => value !== "") || row.length > 1) records.push(row); row = []; };
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (quoted) {
+        if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else { quoted = false; closed = true; } }
+        else field += ch;
+      } else if (ch === delimiter) pushField();
+      else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; pushRow(); }
+      else if (ch === '"') { if (closed || field.trim()) throw new Error("Invalid CSV: a quote appears inside an unquoted field."); field = ""; quoted = wasQuoted = true; }
+      else { if (closed && ch.trim()) throw new Error("Invalid CSV: unexpected text after a closing quote."); if (!closed) field += ch; }
+    }
+    if (quoted) throw new Error("Invalid CSV: a quoted field is not closed.");
+    if (field || row.length || wasQuoted) pushRow();
+    return records;
+  }
+
+  function csvDelimiter(content) {
+    // Only the first complete record is needed; line breaks inside quotes do not end it.
+    let quoted = false, end = content.length;
+    for (let i = 0; i < content.length; i++) {
+      if (content[i] === '"') { if (quoted && content[i + 1] === '"') i++; else quoted = !quoted; }
+      if (!quoted && /[\r\n]/.test(content[i])) { end = i; break; }
+    }
+    const header = content.slice(0, end).replace(/^\uFEFF/, "");
+    let best = ",", count = -1;
+    for (const d of [",", ";", "\t", "|"]) { const c = countUnquotedDelimiters(header, d); if (c > count) { count = c; best = d; } }
+    return best;
   }
 
   /**
@@ -220,6 +252,16 @@
     const raw = await readText(fileOrBlob);
     const originalSize = fileOrBlob.size;
 
+    if (fileOrBlob.type === "text/csv" || /\.csv$/i.test(fileOrBlob.name || "")) {
+      // Do not strip whitespace or blank lines inside quoted CSV cells.
+      const delimiter = csvDelimiter(raw);
+      const records = parseCSVRecords(raw, delimiter);
+      const text = records.map(row => row.map(value => /["\r\n]/.test(value) || value.includes(delimiter) || value !== value.trim() ? `"${value.replace(/"/g, '""')}"` : value).join(delimiter)).join("\n") + (records.length ? "\n" : "");
+      const blob = new Blob([text], { type: "text/csv" });
+      return { blob, originalSize, optimizedSize: blob.size, reductionPercent: originalSize ? Math.max(0, 1 - blob.size / originalSize) : 0,
+        alreadyOptimized: raw === text, linesRemoved: 0, bytesRemoved: Math.max(0, originalSize - blob.size), lineCount: records.length };
+    }
+
     const lines = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
     const cleanedLines = [];
     let linesRemoved = 0;
@@ -258,19 +300,18 @@
       throw new Error("File exceeds the 5 MB limit for text analysis.");
     }
     const content = await readText(fileOrBlob);
-    const lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter((l) => l.trim().length > 0);
+    const delim = csvDelimiter(content);
+    const lines = parseCSVRecords(content, delim);
     if (lines.length === 0) return new Blob(["[]"], { type: "application/json" });
 
-    const structure = detectCsvStructure(lines);
-    const delim = structure.delimiter;
-
-    const rawHeaders = parseCSVLine(lines[0], delim);
+    const rawHeaders = lines[0];
     const headers = disambiguateHeaders(rawHeaders);
     const data = [];
 
     for (let i = 1; i < lines.length; i++) {
-      const cols = parseCSVLine(lines[i], delim);
-      const row = {};
+      const cols = lines[i];
+      if (cols.length !== headers.length) throw new Error(`CSV record ${i + 1} has ${cols.length} fields; expected ${headers.length}. Check the delimiter and missing values.`);
+      const row = Object.create(null);
       headers.forEach((h, idx) => {
         row[h] = cols[idx] !== undefined ? cols[idx] : "";
       });
@@ -289,6 +330,7 @@
     countUnquotedDelimiters,
     detectCsvStructure,
     disambiguateHeaders,
+    parseCSVRecords,
     MAX_TEXT_BYTES
   };
 })(typeof window !== "undefined" ? window : globalThis);

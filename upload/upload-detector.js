@@ -19,7 +19,6 @@
   const Preflight = global.Preflight;
   const { isSupportedImageFile, buildOutputFilename, formatBytes } = Preflight.utils;
   const { analyzeFile } = Preflight.fileAnalyzer;
-  const { determineStrategy } = Preflight.smartProfile;
   const { optimizeImage } = Preflight.imageOptimizer;
 
   const LIMIT_PATTERNS = [
@@ -32,11 +31,20 @@
 
   let settingsCache = { uploadOptimizerEnabled: true };
   const openOverlays = new WeakMap();
+  const heldFiles = new Map();
+  const bypassInputs = new WeakSet();
+  const selectionVersions = new WeakMap();
 
   init();
 
   function init() {
     document.addEventListener("change", handleChange, true);
+    document.addEventListener("input", handleChange, true);
+    document.addEventListener("submit", event => {
+      if ([...heldFiles.keys()].some(input => input.form === event.target)) {
+        event.preventDefault(); event.stopImmediatePropagation();
+      }
+    }, true);
 
     safeGetSettings().then((settings) => {
       settingsCache = settings;
@@ -67,24 +75,32 @@
     const input = (event.composedPath && event.composedPath()[0]) || event.target;
     if (!input || (input.tagName !== "INPUT" && !(input instanceof HTMLInputElement)) || (input.type || "").toLowerCase() !== "file") return;
 
-    if (input.dataset.preflightBypass === "1") {
-      delete input.dataset.preflightBypass;
+    if (bypassInputs.has(input) || input.dataset.preflightBypass === "1") {
       return;
     }
 
     const fileList = input.files;
-    if (!fileList || fileList.length === 0) return;
+    if (!fileList || fileList.length === 0) {
+      if (heldFiles.has(input)) event.stopImmediatePropagation();
+      return;
+    }
 
     const files = Array.from(fileList);
     event.stopImmediatePropagation();
+    heldFiles.set(input, files);
+    input.value = "";
+    const version = (selectionVersions.get(input) || 0) + 1;
+    selectionVersions.set(input, version);
 
-    handleSelection(input, files).catch((err) => {
+    handleSelection(input, files, version).catch((err) => {
+      if (selectionVersions.get(input) !== version) return;
       console.error("PREFLIGHT SELECTION ERR:", err);
-      releaseOriginal(input);
+      heldFiles.delete(input);
+      input.value = "";
     });
   }
 
-  async function handleSelection(input, files) {
+  async function handleSelection(input, files, version) {
     const existing = openOverlays.get(input);
     if (existing) existing.close();
 
@@ -96,6 +112,7 @@
     if (files.length === 1) {
       const file = files[0];
       const fileInfo = await analyzeFile(file);
+      if (selectionVersions.get(input) !== version) return;
 
       const canCompress = fileInfo.supportedActions.includes("compress") || fileInfo.supportedActions.includes("clean");
 
@@ -104,12 +121,14 @@
         fileSize: file.size,
         fileType: fileInfo.label,
         category: fileInfo.category,
+        imageDefaultFormat: fileInfo.type === "image/jpeg" ? "image/jpeg" : "image/webp",
         targetLimitBytes: limitBytes,
         largeFileWarning,
         canCompress,
+        processingError: fileInfo.processingError,
         canMerge: false,
-        onProcess: async (mode) => {
-          return await processSingleFile(file, fileInfo, limitBytes);
+        onProcess: async (mode, compressionSettings) => {
+          return await processSingleFile(file, fileInfo, limitBytes, compressionSettings);
         },
         onContinueOriginal: () => {
           openOverlays.delete(input);
@@ -130,11 +149,13 @@
         onOpenWorkspace: async () => {
           try {
             await Preflight.storageBridge.savePending(file, file.name, file.type, "upload");
-            chrome.runtime.sendMessage({ type: "OPEN_OPTIMIZER" });
-          } catch (e) {}
+            const response = await chrome.runtime.sendMessage({ type: "OPEN_OPTIMIZER" });
+            if (!response?.ok) throw new Error(response?.error || "Could not open workspace.");
+          } catch (e) { throw new Error(e.message || "Could not transfer file."); }
           overlay.close();
           openOverlays.delete(input);
-          releaseOriginal(input);
+          heldFiles.delete(input);
+          input.value = "";
         }
       });
 
@@ -156,7 +177,7 @@
       largeFileWarning,
       canCompress: allImages,
       canMerge: allPdfs,
-      onProcess: async (mode) => {
+      onProcess: async (mode, compressionSettings) => {
         if (allPdfs && mode === "merge") {
           const proc = await ensurePdfProcessor();
           const mergedBlob = await proc.mergePdfs(files);
@@ -174,7 +195,7 @@
         }
 
         if (allImages) {
-          return await batchOptimizeImages(files, limitBytes);
+          return await batchOptimizeImages(files, limitBytes, compressionSettings);
         }
 
         throw new Error("No multi-file processing available for this selection.");
@@ -202,17 +223,17 @@
     openOverlays.set(input, overlay);
   }
 
-  async function processSingleFile(file, fileInfo, limitBytes) {
+  async function processSingleFile(file, fileInfo, limitBytes, compressionSettings = {}) {
     if (fileInfo.category === "image") {
-      const strategy = determineStrategy(fileInfo, { contentHint: "unknown", targetBytes: limitBytes });
       const result = await optimizeImage(file, {
-        format: strategy.format,
-        quality: strategy.quality || 82,
-        maxDimension: strategy.maxDimension,
-        targetBytes: limitBytes
+        format: compressionSettings.format || "image/webp",
+        quality: compressionSettings.quality || 82,
+        maxDimension: compressionSettings.maxDimension || null,
+        convert: compressionSettings.convert,
+        targetBytes: compressionSettings.fitSiteLimit ? limitBytes : null
       });
 
-      const outputName = buildOutputFilename(file.name, result.format);
+      const outputName = result.alreadyOptimized ? file.name : buildOutputFilename(file.name, result.format);
       const outputBlob = result.blob;
       const finalFile = new File([outputBlob], outputName, { type: result.format });
 
@@ -223,14 +244,32 @@
         reductionPercent: result.reductionPercent,
         blob: outputBlob,
         file: finalFile,
-        alreadyOptimized: result.alreadyOptimized
+        alreadyOptimized: result.alreadyOptimized,
+        note: result.alreadyOptimized ? null : `${result.width} × ${result.height} · ${result.format.replace("image/", "").toUpperCase()}${result.quality ? ` · ${result.quality}% quality.` : " · lossless quality."}`
       };
     }
 
     if (fileInfo.category === "pdf") {
-      const proc = await ensurePdfProcessor();
-      const result = await proc.compressPdf(file);
-      const outputName = buildOutputFilename(file.name, "pdf");
+      const mode = compressionSettings.pdfMode || "normal";
+      if(compressionSettings.pdfTargetInvalid)throw new Error('Enter a PDF target between 0.001 and 100 MB.');
+      const targetBytes=compressionSettings.pdfTargetMB ? Math.round(compressionSettings.pdfTargetMB*1024*1024) : null;
+      let result;
+      if(mode!=='extreme') {
+        const proc=await ensurePdfProcessor();result=await proc.compressPdf(file,mode,{signal:compressionSettings.signal,onProgress:compressionSettings.onProgress,strength:compressionSettings.pdfStrength,targetBytes});
+      }
+      if (mode === "extreme" || targetBytes && compressionSettings.allowFlatten && mode!=='light' && result.optimizedSize>targetBytes) {
+        if(compressionSettings.signal?.aborted)throw new DOMException('Compression cancelled.','AbortError');
+        if (!compressionSettings.allowFlatten) throw new Error("Confirm scan mode removes selectable text, links, forms and bookmarks before compressing.");
+        if (file.size > 48 * 1024 * 1024 - 128) throw new Error("Scan upload processing supports files up to 48 MB. Open larger PDFs directly in the workspace.");
+        const dataUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); });
+        // Normalize the MIME prefix for PDFs selected by extension rather than MIME.
+        const response = await chrome.runtime.sendMessage({ type: "COMPRESS_SCAN_PDF", dataUrl: "data:application/pdf;base64," + dataUrl.split(",")[1], strength: compressionSettings.pdfStrength, targetBytes, allowFlatten: true });
+        if (!response?.ok) throw new Error(response?.error || "Scan compression failed.");
+        const scan = response.result;
+        scan.blob = await (await fetch(scan.dataUrl)).blob();
+        if(!result||scan.blob.size<result.blob.size)result=scan;
+      }
+      const outputName = result.alreadyOptimized ? file.name : buildOutputFilename(file.name, "pdf");
       const finalFile = new File([result.blob], outputName, { type: "application/pdf" });
 
       return {
@@ -240,7 +279,9 @@
         reductionPercent: result.reductionPercent,
         blob: result.blob,
         file: finalFile,
-        alreadyOptimized: result.alreadyOptimized
+        alreadyOptimized: result.alreadyOptimized,
+        metTarget: (!limitBytes || result.optimizedSize <= limitBytes) && (!targetBytes || result.optimizedSize<=targetBytes),
+        note: (targetBytes ? (result.optimizedSize<=targetBytes ? "Target size reached. " : "Target not reached. Allow whole-page compression or choose a larger target. ") : "") + (result.flattened ? "Pages are images. Selectable text, links, forms and bookmarks have been removed." : mode === "light" ? "Lossless compression." : `${result.imagesOptimized} embedded images optimized at strength ${result.profile.strength}/100. Increase strength or try scan mode for more compression. Savings depend on the file.`)
       };
     }
 
@@ -271,22 +312,21 @@
     };
   }
 
-  async function batchOptimizeImages(files, limitBytes) {
+  async function batchOptimizeImages(files, limitBytes, compressionSettings = {}) {
     const optimizedFiles = [];
     let totalOptimized = 0;
     const totalOriginal = files.reduce((acc, f) => acc + f.size, 0);
 
     for (const f of files) {
       try {
-        const info = await analyzeFile(f);
-        const strat = determineStrategy(info, { contentHint: "unknown", targetBytes: limitBytes });
         const res = await optimizeImage(f, {
-          format: strat.format,
-          quality: strat.quality || 82,
-          maxDimension: strat.maxDimension,
-          targetBytes: limitBytes
+          format: compressionSettings.format || "image/webp",
+          quality: compressionSettings.quality || 82,
+          maxDimension: compressionSettings.maxDimension || null,
+          convert: compressionSettings.convert,
+          targetBytes: compressionSettings.fitSiteLimit ? limitBytes : null
         });
-        const outName = buildOutputFilename(f.name, res.format);
+        const outName = res.alreadyOptimized ? f.name : buildOutputFilename(f.name, res.format);
         const optFile = new File([res.blob], outName, { type: res.format });
         optimizedFiles.push(optFile);
         totalOptimized += res.blob.size;
@@ -307,6 +347,7 @@
   }
 
   function replaceInputFile(input, file) {
+    heldFiles.delete(input);
     const dt = new DataTransfer();
     dt.items.add(file);
     input.dataset.preflightBypass = "1";
@@ -315,6 +356,7 @@
   }
 
   function replaceInputFiles(input, fileArray) {
+    heldFiles.delete(input);
     const dt = new DataTransfer();
     fileArray.forEach((f) => dt.items.add(f));
     input.dataset.preflightBypass = "1";
@@ -323,13 +365,14 @@
   }
 
   function releaseOriginal(input) {
-    input.dataset.preflightBypass = "1";
-    redispatch(input);
+    const originals = heldFiles.get(input);
+    if (originals) replaceInputFiles(input, originals);
   }
 
   function cancelSelection(input, overlay) {
     overlay.close();
     openOverlays.delete(input);
+    heldFiles.delete(input);
     input.value = "";
     try {
       input.dispatchEvent(new Event("cancel", { bubbles: true }));
@@ -354,8 +397,11 @@
   }
 
   function redispatch(input) {
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
+    bypassInputs.add(input);
+    try {
+      input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+    } finally { bypassInputs.delete(input); delete input.dataset.preflightBypass; }
   }
 
   function detectUploadLimit(input) {

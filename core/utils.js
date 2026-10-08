@@ -16,7 +16,10 @@
   const SUPPORTED_IMAGE_TYPES = Object.freeze([
     "image/png",
     "image/jpeg",
-    "image/webp"
+    "image/webp",
+    "image/bmp",
+    "image/gif",
+    "image/avif"
   ]);
 
   // Below this size, optimizing rarely saves anything meaningful.
@@ -112,6 +115,7 @@
   function normalizeMimeType(type, filename) {
     let t = (type || "").toLowerCase().trim();
     if (t === "image/jpg") t = "image/jpeg";
+    if (t === "image/x-ms-bmp") t = "image/bmp";
     if (t && SUPPORTED_IMAGE_TYPES.includes(t)) return t;
     if (filename) {
       const parts = filename.split(".");
@@ -120,6 +124,9 @@
         if (ext === "png") return "image/png";
         if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
         if (ext === "webp") return "image/webp";
+        if (ext === "bmp") return "image/bmp";
+        if (ext === "gif") return "image/gif";
+        if (ext === "avif") return "image/avif";
       }
     }
     return t || "";
@@ -135,6 +142,43 @@
       return false;
     }
     return isSupportedImageType(file.type, file.name);
+  }
+
+  async function assertStaticImage(file) {
+    const mime = normalizeMimeType(file.type, file.name);
+    if (!["image/gif", "image/webp", "image/png", "image/avif"].includes(mime)) return;
+    const buffer = typeof file.arrayBuffer === "function" ? await file.arrayBuffer() : await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(r.error); r.readAsArrayBuffer(file); });
+    const bytes = new Uint8Array(buffer), view = new DataView(buffer);
+    const word = offset => String.fromCharCode(...bytes.subarray(offset, offset + 4));
+    const animated = () => { throw new Error("Animated images are kept unchanged to preserve all frames. Export a still image first if you want to compress it here."); };
+    if (mime === "image/webp") {
+      for (let p = 12; p + 8 <= bytes.length;) {
+        if (["ANIM", "ANMF"].includes(word(p))) animated();
+        const size = view.getUint32(p + 4, true); p += 8 + size + (size % 2);
+      }
+    } else if (mime === "image/png") {
+      for (let p = 8; p + 8 <= bytes.length;) { if (word(p + 4) === "acTL") animated(); p += 12 + view.getUint32(p); }
+    } else if (mime === "image/avif") {
+      if (bytes.length >= 16 && word(4) === "ftyp") {
+        const end = Math.min(view.getUint32(0), bytes.length);
+        for (let p = 8; p + 4 <= end; p += 4) if (word(p) === "avis") animated();
+      }
+    } else if (bytes.length >= 13) {
+      let p = 13 + ((bytes[10] & 128) ? 3 * (2 ** ((bytes[10] & 7) + 1)) : 0), frames = 0;
+      const skipBlocks = () => { while (p < bytes.length) { const size = bytes[p++]; if (!size) break; p += size; } };
+      while (p < bytes.length) {
+        const block = bytes[p++];
+        if (block === 0x3b) break;
+        if (block === 0x21) { p++; skipBlocks(); }
+        else if (block === 0x2c) {
+          if (++frames > 1) animated();
+          if (p + 9 > bytes.length) break;
+          const flags = bytes[p + 8]; p += 9;
+          if (flags & 128) p += 3 * (2 ** ((flags & 7) + 1));
+          p++; skipBlocks();
+        } else break;
+      }
+    }
   }
 
   /**
@@ -232,6 +276,13 @@
   }
 
   async function savePending(fileOrBlob, name, type, source) {
+    // Content scripts have the host website's IndexedDB origin, not the extension's.
+    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id &&
+        typeof location !== "undefined" && location.protocol !== "chrome-extension:") {
+      const response = await chrome.runtime.sendMessage({ type: "SAVE_PENDING", dataUrl: await fileToDataUrl(fileOrBlob), name, mime: type, source });
+      if (!response || !response.ok) throw new Error(response?.error || "Could not transfer the file to the workspace.");
+      return;
+    }
     const normalizedType = normalizeMimeType(type, name) || type || "application/octet-stream";
     const item = {
       blob: fileOrBlob,
@@ -257,6 +308,7 @@
       const item = await idbGet("pending");
       if (item && item.blob) {
         await idbRemove("pending");
+        if (Date.now() - item.timestamp > 60 * 60 * 1000) return null;
         return new File([item.blob], item.name, { type: item.type });
       }
     } catch (e) {
@@ -275,9 +327,9 @@
   }
 
   async function saveLastResult(result, originalFile) {
-    const name = result.alreadyOptimized
+    const name = result.name || (result.alreadyOptimized
       ? originalFile.name
-      : buildOutputFilename(originalFile.name, result.format);
+      : buildOutputFilename(originalFile.name, result.format));
     const item = {
       blob: result.blob,
       name,
@@ -308,7 +360,8 @@
   async function getLastResult() {
     try {
       const item = await idbGet("lastResult");
-      if (item && item.blob) return item;
+      if (item && item.blob && Date.now() - item.timestamp < 60 * 60 * 1000) return item;
+      if (item) await idbRemove("lastResult");
     } catch (e) {}
 
     if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.session) {
@@ -331,7 +384,7 @@
   // ---------- File Classification (general file preparation) ----------
 
   const MIME_CATEGORIES = {
-    image: ["image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp", "image/svg+xml", "image/tiff"],
+    image: ["image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp", "image/avif", "image/heic", "image/heif", "image/svg+xml", "image/tiff"],
     document: ["application/pdf", "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -344,7 +397,7 @@
   };
 
   const EXT_CATEGORIES = {
-    image: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "tiff", "tif", "ico"],
+    image: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "avif", "heic", "heif", "svg", "tiff", "tif", "ico"],
     document: ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "rtf", "odt", "ods"],
     video: ["mp4", "webm", "ogv", "mov", "avi", "mkv", "flv", "wmv"],
     audio: ["mp3", "ogg", "wav", "flac", "aac", "m4a", "wma"],
@@ -372,6 +425,7 @@
     "image/webp": "WebP Image",
     "image/gif": "GIF Image",
     "image/bmp": "Bitmap Image",
+    "image/avif": "AVIF Image",
     "image/svg+xml": "SVG Image",
     "video/mp4": "MP4 Video",
     "video/webm": "WebM Video",
@@ -458,6 +512,7 @@
     normalizeMimeType,
     isSupportedImageType,
     isSupportedImageFile,
+    assertStaticImage,
     fileToDataUrl,
     dataUrlToFile,
     nowStamp,
